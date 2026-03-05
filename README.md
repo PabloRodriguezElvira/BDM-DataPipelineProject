@@ -3,7 +3,7 @@ Landing Zone BDM project. List of APIs we can use:
 # Structured data:
 - NYC Motor Vehicle Collisions (csv): 
 - Link: https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95/about_data
-(usando la API se pueden obtener filas de 1000 en 1000, de alguna manera se puede hacer para descargar todo el dataset y dividirlo en varios CSV.)
+(El dataset tiene 2246028 filas. Usando la API se pueden obtener filas de 1000 en 1000, de alguna manera se puede hacer para descargar todo el dataset y dividirlo en varios CSV.)
 
 # Semi-structured data: Weather Forecast
 - Link: https://www.weather.gov/documentation/services-web-api

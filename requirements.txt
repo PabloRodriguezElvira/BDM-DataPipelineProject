@@ -1,6 +1,9 @@
 # Minio
 minio
 
+# Kafka
+kafka-python
+
 # APIs
 requests
 

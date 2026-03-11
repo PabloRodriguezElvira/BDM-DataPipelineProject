@@ -18,3 +18,5 @@ Landing Zone BDM project. List of APIs we can use:
 ## 911 recordings (audio)
 - Link: https://www.kaggle.com/datasets/louisteitelbaum/911-recordings-first-6-seconds
 (en el link hay información de cómo usar la API de Kaggle para descargar el dataset)
+
+## Optional Texts.

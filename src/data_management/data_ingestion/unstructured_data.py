@@ -12,7 +12,7 @@ from src.common.kafka_client import get_kafka_producer
 from src.common.progress_bar import ProgressBar
 
 # --- CONFIGURACIÓN DE RUTAS Y KAFKA ---
-BASE_DIR = Path("src/downloaded_data/Unstructured/Images")
+BASE_DIR = Path("src/downloaded_data/unstructured/images")
 
 # AQUÍ TIENES LA VARIABLE QUE ME HAS PEDIDO:
 TOPIC_NAME_KAFKA = "traffic-images" 

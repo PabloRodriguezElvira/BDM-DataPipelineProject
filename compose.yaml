@@ -1,4 +1,17 @@
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bdm-app
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    depends_on:
+      - minio
+      - kafka
+
   minio:
     image: minio/minio:latest
     container_name: minio

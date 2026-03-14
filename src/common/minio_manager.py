@@ -35,7 +35,6 @@ def create_folder(bucket: str, folder: str):
     )
 
 
-
 def main():
     """
     Creates the buckets with all their sub buckets
@@ -43,52 +42,7 @@ def main():
 
     # Create landing bucket
     create_bucket(config.LANDING_BUCKET)
-    for f in config.LANDING_FOLDERS:
-        create_folder(config.LANDING_BUCKET, f)
-        print(f"[OK]: {config.LANDING_BUCKET}/{f}")
 
-    # Create formatted bucket
-    create_bucket(config.FORMATTED_BUCKET)
-    for f in config.FORMATTED_FOLDERS:
-        create_folder(config.FORMATTED_BUCKET, f)
-        print(f"[OK]: {config.FORMATTED_BUCKET}/{f}")
-
-    # Create trusted bucket
-    create_bucket(config.TRUSTED_BUCKET)
-    for f in config.TRUSTED_FOLDERS:
-        create_folder(config.TRUSTED_BUCKET, f)
-        print(f"[OK]: {config.TRUSTED_BUCKET}/{f}")
-
-    # Create rejected bucket
-    create_bucket(config.REJECTED_BUCKET)
-    for f in config.REJECTED_FOLDERS:
-        create_folder(config.REJECTED_BUCKET, f)
-        print(f"[OK]: {config.REJECTED_BUCKET}/{f}")
-
-    # Create fine-tuning bucket
-    create_bucket(config.FINE_TUNING_BUCKET)
-    for f in config.FINE_TUNING_FOLDERS:
-        create_folder(config.FINE_TUNING_BUCKET, f)
-        print(f"[OK]: {config.FINE_TUNING_BUCKET}/{f}")
-
-    # Create augmentation bucket
-    create_bucket(config.AUGMENTATION_BUCKET)
-    for f in config.AUGMENTATION_FOLDERS:
-        create_folder(config.AUGMENTATION_BUCKET, f)
-        print(f"[OK]: {config.AUGMENTATION_BUCKET}/{f}")
-
-    # Create split zone bucket
-    create_bucket(config.SPLIT_BUCKET)
-    for f in config.SPLIT_FOLDERS:
-        create_folder(config.SPLIT_BUCKET, f)
-        print(f"[OK]: {config.SPLIT_BUCKET}/{f}")
-
-    # Create training dataset zone bucket
-    create_bucket(config.TRAINING_DATASET_BUCKET)
-    for f in config.TRAINING_DATASET_FOLDERS:
-        create_folder(config.TRAINING_DATASET_BUCKET, f)
-        print(f"[OK]: {config.TRAINING_DATASET_BUCKET}/{f}")
- 
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ from src.common.load_env import load_env_file
 from src.common.progress_bar import ProgressBar
 
 DATASET = "louisteitelbaum/911-recordings-first-6-seconds"
-OUT_DIR = Path("downloaded_data/unstructured_data/audio")
+OUT_DIR = Path("downloaded_data/unstructured/audio")
 AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
 
 

@@ -27,3 +27,14 @@ Landing Zone BDM project. List of APIs we can use:
 
 ## Optional Texts.
 
+
+
+## Cambios
+Dockerfile -> añadido el pip install requirements ahí, solo hace falta hacer docker compose --build -d
+
+data_ingestion solo tiene la lógica para descargar los datasets en local. upload_to_temporal se encarga de mover los datasets
+a temporal bucket y landing_zone mueve de temporal a persistent.
+
+he quitado que en minio_manager se generen las subcarpetas de la landing_zone, no hacen falta.
+
+

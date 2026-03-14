@@ -6,6 +6,9 @@ kafka-python
 
 # APIs
 requests
+kaggle
+kagglehub
+kagglesdk
 
 # Progress Bar
 tqdm

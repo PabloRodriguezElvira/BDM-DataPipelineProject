@@ -16,10 +16,3 @@ src/.ipynb_checkpoints/
 # Buckets de minio y datasets
 data_MinIO/
 downloaded_data/
-
-# Carpeta de embeddings
-embeddings/
-
-# Model training
-final_test_run/
-trainer_output/

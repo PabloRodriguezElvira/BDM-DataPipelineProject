@@ -26,8 +26,7 @@ class ObjectMove:
 
 def classify_destination(object_name: str) -> Optional[str]:
     """
-    Return destination object path in persistent landing.
-    Supports only flat temporal_landing objects (no nested temporal folders).
+    Return destination object path in persistent landing for every object in temporal landing folder.
     CSV files are excluded here because they are processed through Delta Lake.
     """
     relative_path = object_name.removeprefix(config.LANDING_TEMPORAL_PATH).strip("/")

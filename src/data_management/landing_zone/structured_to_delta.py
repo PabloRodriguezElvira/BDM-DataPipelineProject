@@ -15,9 +15,9 @@ DELTA_TABLE_NAME = "nyc_collisions_delta"
 
 def iter_structured_csvs(client: Minio):
     """
-    Iterate only CSV files inside temporal structured landing.
+    Iterate only CSV files inside temporal landing.
     """
-    prefix = f"{config.LANDING_TEMPORAL_PATH}structured/"
+    prefix = config.LANDING_TEMPORAL_PATH
 
     for obj in client.list_objects(config.LANDING_BUCKET, prefix=prefix, recursive=True):
         if obj.is_dir or not obj.object_name:

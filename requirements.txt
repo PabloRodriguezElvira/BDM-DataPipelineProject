@@ -12,3 +12,7 @@ kagglesdk
 
 # Progress Bar
 tqdm
+
+pandas
+pyarrow
+deltalake

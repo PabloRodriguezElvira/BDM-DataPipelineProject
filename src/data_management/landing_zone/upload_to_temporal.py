@@ -28,18 +28,9 @@ from src.common.progress_bar import ProgressBar
 
 
 DATASET_CONFIG = {
-    "structured": {
-        "local_path": Path("downloaded_data/structured"),
-        "temporal_prefix": "structured",
-    },
-    "semi_structured": {
-        "local_path": Path("downloaded_data/semi_structured"),
-        "temporal_prefix": "semi_structured",
-    },
-    "unstructured_audio": {
-        "local_path": Path("downloaded_data/unstructured/audio"),
-        "temporal_prefix": "unstructured/audio",
-    },
+    "structured": Path("downloaded_data/structured"),
+    "semi_structured": Path("downloaded_data/semi_structured"),
+    "unstructured_audio": Path("downloaded_data/unstructured/audio")
 }
 
 
@@ -65,7 +56,6 @@ def _object_exists(client: Minio, bucket: str, object_name: str) -> bool:
 def upload_dataset_to_temporal(
     client: Minio,
     dataset_name: str,
-    temporal_prefix: str,
     local_base_dir: Path,
     overwrite: bool
 ):
@@ -81,7 +71,6 @@ def upload_dataset_to_temporal(
     uploaded = 0
     skipped = 0
     temporal_root = config.LANDING_TEMPORAL_PATH.rstrip("/")
-    dataset_prefix = temporal_prefix.strip("/")
 
     with ProgressBar(
         total=len(files),
@@ -90,8 +79,7 @@ def upload_dataset_to_temporal(
         unit_scale=False,
     ) as progress:
         for file_path in files:
-            relative_path = file_path.relative_to(local_base_dir).as_posix()
-            object_name = f"{temporal_root}/{dataset_prefix}/{relative_path}"
+            object_name = f"{temporal_root}/{file_path.name}"
 
             if not overwrite and _object_exists(client, config.LANDING_BUCKET, object_name):
                 skipped += 1
@@ -133,12 +121,11 @@ def main(only: str, overwrite: bool):
         DATASET_CONFIG.items() if only == "all" else [(only, DATASET_CONFIG[only])]
     )
 
-    for data_type, dataset_config in selected:
+    for data_type, local_path in selected:
         upload_dataset_to_temporal(
             client=client,
             dataset_name=data_type,
-            temporal_prefix=dataset_config["temporal_prefix"],
-            local_base_dir=dataset_config["local_path"],
+            local_base_dir=local_path,
             overwrite=overwrite
         )
 

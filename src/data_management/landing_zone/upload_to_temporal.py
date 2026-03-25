@@ -30,7 +30,8 @@ from src.common.progress_bar import ProgressBar
 DATASET_CONFIG = {
     "structured": Path("downloaded_data/structured"),
     "semi_structured": Path("downloaded_data/semi_structured"),
-    "unstructured_audio": Path("downloaded_data/unstructured/audio")
+    "unstructured_audio": Path("downloaded_data/unstructured/audio"),
+    "unstructured_text": Path("downloaded_data/unstructured/text")
 }
 
 

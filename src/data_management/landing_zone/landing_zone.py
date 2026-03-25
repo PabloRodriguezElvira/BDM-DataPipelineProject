@@ -13,9 +13,6 @@ import src.common.global_variables as config
 from src.data_management.landing_zone.structured_to_delta import process_csv_object
 
 
-AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"}
-
-
 # Data class to represent an operation in landing zone
 @dataclass
 class ObjectMove:
@@ -43,8 +40,11 @@ def classify_destination(object_name: str) -> Optional[str]:
     if extension == ".json":
         return f"{config.LANDING_PERSISTENT_PATH}semi_structured/{file_name}"
 
-    if extension in AUDIO_EXTENSIONS:
+    if extension == ".wav":
         return f"{config.LANDING_PERSISTENT_PATH}unstructured/audio/{file_name}"
+
+    if extension == ".txt":
+        return  f"{config.LANDING_PERSISTENT_PATH}unstructured/text/{file_name}"
 
     return None
 
@@ -98,20 +98,23 @@ def main():
     """
 
     client = get_minio_client()
+    operations = list(iter_objects_in_temporal_bucket(client))
+
+    if not operations:
+        print("[INFO] No objects found in temporal_landing to process.")
+        return
 
     with ProgressBar(
-        total=None,
+        total=len(operations),
         description="Processing landing objects",
-        unit="file",
+        unit="files",
         unit_scale=False,
         unit_divisor=1,
     ) as progress:
-        seen = 0
         processed = 0
         failed = 0
 
-        for obj in iter_objects_in_temporal_bucket(client):
-            seen += 1
+        for obj in operations:
             progress.set_description(f"Processing {obj.source}", refresh=True)
 
             try:
@@ -122,17 +125,14 @@ def main():
 
                 progress.update(1)
                 processed += 1
+                progress.write(f"[OK] {obj.source}")
 
             except Exception as exc:
                 failed += 1
                 progress.write(f"[ERROR] Failed processing {obj.source}: {exc}")
 
-        if seen == 0:
-            progress.write("[INFO] No objects found in temporal_landing to process.")
-            return
-
         progress.write(
-            f"[OK] Objects seen={seen}, processed={processed}, failed={failed}"
+            f"[OK] Objects seen={len(operations)}, processed={processed}, failed={failed}"
         )
 
 

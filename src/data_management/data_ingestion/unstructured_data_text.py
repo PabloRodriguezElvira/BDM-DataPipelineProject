@@ -62,13 +62,11 @@ def _format_article_text(article: dict) -> str:
     link = str(article.get("link", "") or "").strip()
 
     return (
-        f"Headline: {headline}\n\n"
-        f"Category: {category}\n"
-        f"Authors: {authors}\n"
-        f"Date: {date}\n\n"
-        f"Short description:\n"
-        f"{short_description}\n\n"
-        f"Source:\n"
+        f"{headline}\n"
+        f"{category}\n"
+        f"{authors}\n"
+        f"{date}\n"
+        f"{short_description}\n"
         f"{link}\n"
     )
 

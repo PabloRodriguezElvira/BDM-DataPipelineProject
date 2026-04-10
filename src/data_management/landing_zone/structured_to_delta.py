@@ -10,7 +10,6 @@ from src.common.progress_bar import ProgressBar
 import src.common.global_variables as config
 
 
-DELTA_TABLE_NAME = "nyc_collisions_delta"
 
 
 def iter_structured_csvs(client: Minio):
@@ -63,10 +62,7 @@ def get_delta_table_uri() -> str:
     """
     Delta table location inside MinIO persistent landing.
     """
-    return (
-        f"s3://{config.LANDING_BUCKET}/"
-        f"{config.LANDING_PERSISTENT_PATH}structured/delta/{DELTA_TABLE_NAME}"
-    )
+    return f"s3://{config.LANDING_BUCKET}/{config.LANDING_PERSISTENT_PATH}structured/{DELTA_TABLE_NAME}"
 
 
 def get_storage_options() -> dict:

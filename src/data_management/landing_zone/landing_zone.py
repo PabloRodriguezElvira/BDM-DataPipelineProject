@@ -16,6 +16,7 @@ from src.common.progress_bar import ProgressBar
 import src.common.global_variables as config
 
 from src.data_management.landing_zone.structured_to_delta import process_csv_object
+from src.data_management.landing_zone.process_metadata_to_delta import process_unstructured_image_metadata_to_delta, process_metadata_to_delta
 
 
 # Data class to represent an operation in landing zone
@@ -330,6 +331,30 @@ def build_unstructured_audio_metadata(
         },
     }
 
+def build_unstructured_image_report_metadata(
+    source_object: str,
+    data_destination: str,
+    raw_bytes: bytes,
+) -> dict:
+    """
+    Build technical and audit metadata for the streaming JSON report.
+    This ensures we have a SHA256 checksum and file size for every report.
+    """
+    return {
+        "file_metadata": {
+            "file_name": PurePosixPath(source_object).name,
+            "source_object_path": source_object,
+            "persistent_data_path": data_destination,
+            "file_size_bytes": len(raw_bytes),
+            "checksum_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+            "content_type": "application/json",
+            "ingested_at_utc": datetime.now(UTC).isoformat(),
+        },
+        "content_metadata": {
+            "schema_type": "traffic_streaming_report",
+            "description": "Metadata for the aggregated JSON report from Kafka streaming"
+        }
+    }
 
 def process_semi_structured_object(client: Minio, move: ObjectMove):
     """
@@ -348,7 +373,8 @@ def process_semi_structured_object(client: Minio, move: ObjectMove):
         payload=payload,
         raw_bytes=raw_bytes,
     )
-
+    # We process the metadata to delta
+    process_metadata_to_delta(metadata_payload, "semi_structured/delta/")
     uploaded_objects = []
     try:
         upload_json_bytes(client, move.destination, raw_bytes)
@@ -379,7 +405,8 @@ def process_unstructured_text_object(client: Minio, move: ObjectMove):
         metadata_destination=move.metadata_destination,
         raw_bytes=raw_bytes,
     )
-
+    # We process the metadata to delta
+    process_metadata_to_delta(metadata_payload, "unstructured/text/delta/")
     uploaded_objects = []
     try:
         client.put_object(
@@ -416,7 +443,8 @@ def process_unstructured_audio_object(client: Minio, move: ObjectMove):
         metadata_destination=move.metadata_destination,
         raw_bytes=raw_bytes,
     )
-
+    # We process the metadata to delta
+    process_metadata_to_delta(metadata_payload, "semi_structured/delta/")
     uploaded_objects = []
     try:
         client.put_object(
@@ -536,9 +564,22 @@ def main():
                     process_csv_object(client, obj.source)
                 elif obj.is_semi_structured_json:
                     process_semi_structured_object(client, obj)
+                elif obj.source.startswith(f"{config.LANDING_TEMPORAL_PATH}meta_unstructured_"):
+                    
+                    process_unstructured_image_metadata_to_delta(client, obj.source)
+                    raw_bytes = download_object_bytes(client, obj.source)
+                    tech_meta_payload = build_unstructured_image_report_metadata(obj.source, obj.destination, raw_bytes)
+    
+                    tech_meta_path = obj.destination.replace("metadata/", "metadata/tech_")
+                    upload_json_bytes(client, tech_meta_path, json.dumps(tech_meta_payload, indent=2).encode("utf-8"))
+                    
+                    # 3. Mover y limpiar (Persistencia)
+                    move_object(client, obj)
                 elif obj.is_unstructured_text:
+                    
                     process_unstructured_text_object(client, obj)
                 elif obj.is_unstructured_audio:
+                    
                     process_unstructured_audio_object(client, obj)
                 else:
                     move_object(client, obj)
@@ -549,10 +590,10 @@ def main():
 
             except Exception as exc:
                 failed += 1
-                progress.write(f"[ERROR] Failed processing {obj.source}: {exc}")
+                progress.write(f"ERROR: Failed processing {obj.source}: {exc}")
 
         progress.write(
-            f"[OK] Objects seen={len(operations)}, processed={processed}, failed={failed}"
+            f"Objects seen={len(operations)}, processed={processed}, failed={failed}"
         )
 
 

@@ -13,9 +13,6 @@ Examples of usage:
 
 - Download only daily forecast (skip hourly):
   python -m src.data_management.data_ingestion.semi_structured_data --no-hourly
-
-- Overwrite existing files:
-  python -m src.data_management.data_ingestion.semi_structured_data --overwrite
 """
 
 import argparse
@@ -41,7 +38,7 @@ def fetch_gridpoint(lat: float, lon: float) -> tuple[str, int, int]:
     return properties["gridId"], int(properties["gridX"]), int(properties["gridY"])
 
 
-def download_weather_jsons(max_locations: Optional[int], include_hourly: bool, overwrite: bool):
+def download_weather_jsons(max_locations: Optional[int], include_hourly: bool):
     config.SEMI_STRUCTURED_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     selected_locations = (
@@ -70,7 +67,7 @@ def download_weather_jsons(max_locations: Optional[int], include_hourly: bool, o
                 label = termination.replace("/", "_")
                 output_path = config.SEMI_STRUCTURED_OUT_DIR / f"nyc_weather_{location['name']}_{label}.json"
 
-                if output_path.exists() and not overwrite:
+                if output_path.exists():
                     progress.update(1)
                     progress.write(f"[SKIP] {output_path} already exists.")
                     continue
@@ -123,11 +120,6 @@ def parse_args():
         action="store_true",
         help="If set, only daily forecast JSONs are downloaded.",
     )
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="If set, existing JSON files are replaced.",
-    )
     args = parser.parse_args()
 
     if args.max_locations is not None and args.max_locations <= 0:
@@ -141,5 +133,4 @@ if __name__ == "__main__":
     download_weather_jsons(
         max_locations=cli_args.max_locations,
         include_hourly=not cli_args.no_hourly,
-        overwrite=cli_args.overwrite,
     )

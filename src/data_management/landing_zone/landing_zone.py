@@ -444,7 +444,7 @@ def process_unstructured_audio_object(client: Minio, move: ObjectMove):
         raw_bytes=raw_bytes,
     )
     # We process the metadata to delta
-    process_metadata_to_delta(metadata_payload, "semi_structured/delta/")
+    process_metadata_to_delta(metadata_payload, "unstructured/audio/delta/")
     uploaded_objects = []
     try:
         client.put_object(

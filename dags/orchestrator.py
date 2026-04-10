@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from airflow import DAG
+from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.utils.task_group import TaskGroup
 
@@ -14,6 +15,7 @@ DEFAULT_ARGS = {
     "retry_delay": timedelta(minutes=config.AIRFLOW_DEFAULT_RETRY_DELAY_MINUTES),
 }
 
+
 with DAG(
     dag_id=config.AIRFLOW_BATCH_DAG_ID,
     description=config.AIRFLOW_BATCH_DESCRIPTION,
@@ -23,6 +25,62 @@ with DAG(
     catchup=config.AIRFLOW_BATCH_CATCHUP,
     max_active_runs=config.AIRFLOW_BATCH_MAX_ACTIVE_RUNS,
     tags=config.AIRFLOW_BATCH_TAGS,
+    params={
+        "structured_limit": Param(
+            config.AIRFLOW_STRUCTURED_LIMIT,
+            type="integer",
+            minimum=1,
+            title="Structured limit",
+            description="Maximum number of structured rows/items to ingest",
+        ),
+        "structured_max_csvs": Param(
+            config.AIRFLOW_STRUCTURED_MAX_CSVS,
+            type="integer",
+            minimum=1,
+            title="Structured max CSVs",
+            description="Maximum number of CSV files to ingest",
+        ),
+        "semi_structured_max_locations": Param(
+            config.AIRFLOW_SEMI_STRUCTURED_MAX_LOCATIONS,
+            type="integer",
+            minimum=1,
+            title="Semi-structured max locations",
+            description="Maximum number of locations to query",
+        ),
+        "semi_structured_no_hourly": Param(
+            config.AIRFLOW_SEMI_STRUCTURED_NO_HOURLY,
+            type="boolean",
+            title="Daily forecasts",
+            description="Set to true to request daily forecasts, or false to request hourly forecasts.",
+        ),
+        "unstructured_text_max_files": Param(
+            config.AIRFLOW_UNSTRUCTURED_TEXT_MAX_FILES,
+            type="integer",
+            minimum=1,
+            title="Unstructured text max files",
+            description="Maximum number of text files to ingest",
+        ),
+        "unstructured_audio_max_files": Param(
+            config.AIRFLOW_UNSTRUCTURED_AUDIO_MAX_FILES,
+            type="integer",
+            minimum=1,
+            title="Unstructured audio max files",
+            description="Maximum number of audio files to ingest",
+        ),
+        "upload_to_temporal_only": Param(
+            config.AIRFLOW_UPLOAD_TO_TEMPORAL_ONLY,
+            type="string",
+            title="Upload dataset type",
+            description="Dataset type to upload to temporal landing: all, structured, semi_structured, unstructured_audio or unstructured_text.",
+        ),
+        "upload_to_temporal_max_files": Param(
+            config.AIRFLOW_UPLOAD_TO_TEMPORAL_MAX_FILES,
+            type="integer",
+            minimum=1,
+            title="Upload max files",
+            description="Maximum number of files to upload per dataset type to temporal landing.",
+        ),
+    },
 ) as dag:
 
     with TaskGroup(group_id="data_ingestion") as data_ingestion:
@@ -31,8 +89,8 @@ with DAG(
             bash_command=(
                 f"cd {config.PROJECT_ROOT} && "
                 f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.structured_data "
-                f"--limit {config.AIRFLOW_STRUCTURED_LIMIT} "
-                f"--max-csvs {config.AIRFLOW_STRUCTURED_MAX_CSVS}"
+                "--limit {{ params.structured_limit }} "
+                "--max-csvs {{ params.structured_max_csvs }}"
             ),
         )
 
@@ -41,7 +99,8 @@ with DAG(
             bash_command=(
                 f"cd {config.PROJECT_ROOT} && "
                 f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.semi_structured_data "
-                f"--max-locations {config.AIRFLOW_SEMI_STRUCTURED_MAX_LOCATIONS}"
+                "--max-locations {{ params.semi_structured_max_locations }}"
+                "--no-hourly {{ params.semi_structured_no_hourly }} "
             ),
         )
 
@@ -50,7 +109,7 @@ with DAG(
             bash_command=(
                 f"cd {config.PROJECT_ROOT} && "
                 f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.unstructured_data_text "
-                f"--max-files {config.AIRFLOW_UNSTRUCTURED_TEXT_MAX_FILES}"
+                "--max-files {{ params.unstructured_text_max_files }}"
             ),
         )
 
@@ -59,7 +118,7 @@ with DAG(
             bash_command=(
                 f"cd {config.PROJECT_ROOT} && "
                 f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.unstructured_data_audio "
-                f"--max-files {config.AIRFLOW_UNSTRUCTURED_AUDIO_MAX_FILES}"
+                "--max-files {{ params.unstructured_audio_max_files }}"
             ),
         )
 
@@ -75,7 +134,9 @@ with DAG(
             task_id="upload_to_temporal",
             bash_command=(
                 f"cd {config.PROJECT_ROOT} && "
-                f"{config.PYTHON_BIN} -m src.data_management.landing_zone.upload_to_temporal"
+                f"{config.PYTHON_BIN} -m src.data_management.landing_zone.upload_to_temporal "
+                "--only {{ params.upload_to_temporal_only }} "
+                "--max-files {{ params.upload_to_temporal_max_files }}"
             ),
         )
 
@@ -101,13 +162,22 @@ with DAG(
     catchup=config.AIRFLOW_STREAMING_CATCHUP,
     max_active_runs=config.AIRFLOW_STREAMING_MAX_ACTIVE_RUNS,
     tags=config.AIRFLOW_STREAMING_TAGS,
+    params={
+        "streaming_timeout_seconds": Param(
+            config.AIRFLOW_STREAMING_TIMEOUT_SECONDS,
+            type="integer",
+            minimum=1,
+            title="Streaming timeout seconds",
+            description="Maximum execution time for producer and consumer",
+        ),
+    },
 ) as streaming_dag:
 
     start_consumer = BashOperator(
         task_id="start_image_consumer",
         bash_command=(
             f"cd {config.PROJECT_ROOT} && "
-            f"timeout {config.AIRFLOW_STREAMING_TIMEOUT_SECONDS} "
+            "timeout {{ params.streaming_timeout_seconds }} "
             f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.unstructured_data_image_consumer"
         ),
     )
@@ -116,7 +186,7 @@ with DAG(
         task_id="start_image_producer",
         bash_command=(
             f"cd {config.PROJECT_ROOT} && "
-            f"timeout {config.AIRFLOW_STREAMING_TIMEOUT_SECONDS} "
+            "timeout {{ params.streaming_timeout_seconds }} "
             f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.unstructured_data_image_producer"
         ),
     )

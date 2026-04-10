@@ -9,9 +9,6 @@ Examples of usage:
 
 - Limit how many articles are converted:
   python -m src.data_management.data_ingestion.unstructured_data_text --max-files 5
-
-- Overwrite existing local .txt files:
-  python -m src.data_management.data_ingestion.unstructured_data_text --overwrite
 """
 
 import argparse
@@ -33,14 +30,14 @@ def _configure_kagglehub_token():
     os.environ["KAGGLE_API_TOKEN"] = token
 
 
-def _download_dataset_to_cache(overwrite: bool) -> Path:
+def _download_dataset_to_cache() -> Path:
     _configure_kagglehub_token()
 
     import kagglehub
 
     dataset_path = kagglehub.dataset_download(
         config.UNSTRUCTURED_TEXT_DATASET,
-        force_download=overwrite,
+        force_download=False,
     )
 
     return Path(dataset_path)
@@ -67,11 +64,10 @@ def _format_article_text(article: dict) -> str:
 def _write_article_txt(
     article: dict,
     article_index: int,
-    overwrite: bool,
 ) -> bool:
     output_path = config.UNSTRUCTURED_TEXT_OUT_DIR / f"{article_index:06d}.txt"
 
-    if output_path.exists() and not overwrite:
+    if output_path.exists():
         return False
 
     output_path.write_text(_format_article_text(article), encoding="utf-8")
@@ -81,7 +77,6 @@ def _write_article_txt(
 def _split_json_to_txt(
     source_path: Path,
     max_files: Optional[int],
-    overwrite: bool,
 ) -> tuple[int, bool]:
     converted = 0
     processed = 0
@@ -112,7 +107,6 @@ def _split_json_to_txt(
             if _write_article_txt(
                 article=article,
                 article_index=line_number,
-                overwrite=overwrite,
             ):
                 converted += 1
 
@@ -138,7 +132,6 @@ def _delete_json_if_needed(source_path: Path, completed_full_file: bool):
 def _process_json_sources(
     json_files: list[Path],
     max_files: Optional[int],
-    overwrite: bool,
 ) -> int:
     total_converted = 0
 
@@ -150,7 +143,6 @@ def _process_json_sources(
         converted, completed_full_file = _split_json_to_txt(
             source_path=source_path,
             max_files=remaining,
-            overwrite=overwrite,
         )
         total_converted += converted
         _delete_json_if_needed(
@@ -164,7 +156,6 @@ def _process_json_sources(
 def _copy_plain_text_files(
     text_files: list[Path],
     max_files: Optional[int],
-    overwrite: bool,
 ) -> int:
     copied = 0
 
@@ -181,7 +172,7 @@ def _copy_plain_text_files(
             output_path = config.UNSTRUCTURED_TEXT_OUT_DIR / source_path.name
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            if output_path.exists() and not overwrite:
+            if output_path.exists():
                 progress.update(1)
                 continue
 
@@ -194,7 +185,6 @@ def _copy_plain_text_files(
 
 def download_text_from_kaggle(
     max_files: Optional[int],
-    overwrite: bool,
 ):
     config.UNSTRUCTURED_TEXT_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -209,12 +199,11 @@ def download_text_from_kaggle(
         converted = _process_json_sources(
             json_files=local_json_files,
             max_files=max_files,
-            overwrite=overwrite,
         )
         print(f"[OK] Created {converted} text files in {config.UNSTRUCTURED_TEXT_OUT_DIR}")
         return
 
-    dataset_path = _download_dataset_to_cache(overwrite=overwrite)
+    dataset_path = _download_dataset_to_cache()
     all_files = sorted([f for f in dataset_path.rglob("*") if f.is_file()])
     json_files = [
         f for f in all_files
@@ -230,7 +219,6 @@ def download_text_from_kaggle(
         converted = _process_json_sources(
             json_files=json_files,
             max_files=max_files,
-            overwrite=overwrite,
         )
 
     remaining = None if max_files is None else max_files - converted
@@ -239,7 +227,6 @@ def download_text_from_kaggle(
         copied = _copy_plain_text_files(
             text_files=text_files,
             max_files=remaining,
-            overwrite=overwrite,
         )
 
     print(
@@ -258,11 +245,6 @@ def parse_args():
         default=None,
         help="How many entries are converted to text from the JSON file.",
     )
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="If set, existing local files are replaced.",
-    )
     args = parser.parse_args()
 
     if args.max_files is not None and args.max_files <= 0:
@@ -275,5 +257,4 @@ if __name__ == "__main__":
     cli_args = parse_args()
     download_text_from_kaggle(
         max_files=cli_args.max_files,
-        overwrite=cli_args.overwrite,
     )

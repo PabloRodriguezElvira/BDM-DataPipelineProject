@@ -62,7 +62,7 @@ def get_delta_table_uri() -> str:
     """
     Delta table location inside MinIO persistent landing.
     """
-    return f"s3://{config.LANDING_BUCKET}/{config.LANDING_PERSISTENT_PATH}structured/{DELTA_TABLE_NAME}"
+    return f"s3://{config.LANDING_BUCKET}/{config.LANDING_PERSISTENT_PATH}structured/delta"
 
 
 def get_storage_options() -> dict:

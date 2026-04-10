@@ -9,9 +9,6 @@ Examples of usage:
 
 - Limit how many files are downloaded:
   python -m src.data_management.data_ingestion.unstructured_data_audio --max-files 50
-
-- Overwrite existing local files:
-  python -m src.data_management.data_ingestion.unstructured_data_audio --overwrite
 """
 
 import argparse
@@ -32,14 +29,14 @@ def _configure_kagglehub_token():
     os.environ["KAGGLE_API_TOKEN"] = token
 
 
-def _download_dataset_to_cache(overwrite: bool) -> Path:
+def _download_dataset_to_cache() -> Path:
     _configure_kagglehub_token()
 
     import kagglehub
 
     dataset_path = kagglehub.dataset_download(
         config.UNSTRUCTURED_AUDIO_DATASET,
-        force_download=overwrite,
+        force_download=False,
     )
 
     return Path(dataset_path)
@@ -47,10 +44,9 @@ def _download_dataset_to_cache(overwrite: bool) -> Path:
 
 def download_audio_from_kaggle(
     max_files: Optional[int],
-    overwrite: bool,
 ):
     config.UNSTRUCTURED_AUDIO_OUT_DIR.mkdir(parents=True, exist_ok=True)
-    dataset_path = _download_dataset_to_cache(overwrite=overwrite)
+    dataset_path = _download_dataset_to_cache()
 
     all_files = sorted([f for f in dataset_path.rglob("*") if f.is_file()])
     audio_files = [
@@ -71,7 +67,7 @@ def download_audio_from_kaggle(
             output_path = config.UNSTRUCTURED_AUDIO_OUT_DIR / source_path.name
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            if output_path.exists() and not overwrite:
+            if output_path.exists():
                 progress.update(1)
                 progress.write(f"[SKIP] {output_path} already exists.")
                 continue
@@ -94,11 +90,6 @@ def parse_args():
         default=None,
         help="Maximum number of files to download in this run.",
     )
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="If set, existing local files are replaced.",
-    )
     args = parser.parse_args()
 
     if args.max_files is not None and args.max_files <= 0:
@@ -111,5 +102,4 @@ if __name__ == "__main__":
     cli_args = parse_args()
     download_audio_from_kaggle(
         max_files=cli_args.max_files,
-        overwrite=cli_args.overwrite,
     )

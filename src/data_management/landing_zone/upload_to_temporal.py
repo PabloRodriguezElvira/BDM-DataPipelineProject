@@ -12,9 +12,6 @@ Examples of usage:
 
 - Upload at most 10 files per dataset:
   python -m src.data_management.landing_zone.upload_to_temporal --max-files 10
-
-- Force overwrite of existing objects:
-  python -m src.data_management.landing_zone.upload_to_temporal --overwrite
 """
 
 from __future__ import annotations
@@ -61,7 +58,6 @@ def upload_dataset_to_temporal(
     client: Minio,
     dataset_name: str,
     local_base_dir: Path,
-    overwrite: bool,
     max_files: int | None,
 ):
     if not local_base_dir.exists():
@@ -89,7 +85,7 @@ def upload_dataset_to_temporal(
         for file_path in files:
             object_name = f"{temporal_root}/{file_path.name}"
 
-            if not overwrite and _object_exists(client, config.LANDING_BUCKET, object_name):
+            if _object_exists(client, config.LANDING_BUCKET, object_name):
                 skipped += 1
                 progress.update(1)
                 progress.write(f"[SKIP] {object_name} already exists.")
@@ -119,11 +115,6 @@ def parse_args():
         default=None,
         help="Maximum number of files to upload per dataset type in this run.",
     )
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="If set, existing objects in MinIO are replaced.",
-    )
     args = parser.parse_args()
 
     if args.max_files is not None and args.max_files <= 0:
@@ -132,7 +123,7 @@ def parse_args():
     return args
 
 
-def main(only: str, overwrite: bool, max_files: int | None):
+def main(only: str, max_files: int | None):
     client = get_minio_client()
     _ensure_bucket_exists(client, config.LANDING_BUCKET)
 
@@ -145,7 +136,6 @@ def main(only: str, overwrite: bool, max_files: int | None):
             client=client,
             dataset_name=data_type,
             local_base_dir=local_path,
-            overwrite=overwrite,
             max_files=max_files,
         )
 
@@ -154,6 +144,5 @@ if __name__ == "__main__":
     cli_args = parse_args()
     main(
         only=cli_args.only,
-        overwrite=cli_args.overwrite,
         max_files=cli_args.max_files,
     )

@@ -47,6 +47,7 @@ AIRFLOW_DEFAULT_DEPENDS_ON_PAST = False
 AIRFLOW_DEFAULT_RETRIES = 2
 AIRFLOW_DEFAULT_RETRY_DELAY_MINUTES = 5
 
+# Pipeline Node Info
 AIRFLOW_BATCH_DAG_ID = "bdm_batch_pipeline"
 AIRFLOW_BATCH_DESCRIPTION = "Batch orchestration for ingestion and landing zone"
 AIRFLOW_BATCH_START_DATE = datetime(2026, 4, 10)
@@ -55,6 +56,7 @@ AIRFLOW_BATCH_CATCHUP = False
 AIRFLOW_BATCH_MAX_ACTIVE_RUNS = 1
 AIRFLOW_BATCH_TAGS = ["bdm", "ingestion", "landing-zone"]
 
+# Kafka Node Info
 AIRFLOW_STREAMING_DAG_ID = "bdm_streaming_bootstrap"
 AIRFLOW_STREAMING_DESCRIPTION = "Manual bootstrap for Kafka producer/consumer of the image stream"
 AIRFLOW_STREAMING_START_DATE = datetime(2026, 4, 10)
@@ -63,11 +65,23 @@ AIRFLOW_STREAMING_CATCHUP = False
 AIRFLOW_STREAMING_MAX_ACTIVE_RUNS = 1
 AIRFLOW_STREAMING_TAGS = ["bdm", "streaming", "kafka"]
 
+# structured_data.py parameters
 AIRFLOW_STRUCTURED_LIMIT = 50000
 AIRFLOW_STRUCTURED_MAX_CSVS = 5
+
+# semi_structured_data.py parameters
 AIRFLOW_SEMI_STRUCTURED_MAX_LOCATIONS = 5
+AIRFLOW_SEMI_STRUCTURED_NO_HOURLY = False
+
+# unstructured parameters
 AIRFLOW_UNSTRUCTURED_TEXT_MAX_FILES = 100
 AIRFLOW_UNSTRUCTURED_AUDIO_MAX_FILES = 50
+
+# upload_to_temporal.py parameters
+AIRFLOW_UPLOAD_TO_TEMPORAL_ONLY = "all"
+AIRFLOW_UPLOAD_TO_TEMPORAL_MAX_FILES = 100
+
+# kafka parameters
 AIRFLOW_STREAMING_TIMEOUT_SECONDS = 120
 
 # ------------- Semi-structured ingestion -------------

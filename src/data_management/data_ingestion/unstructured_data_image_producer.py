@@ -1,106 +1,130 @@
-"""
-He añadido que la cantidad de carpetas se pase como argumento en la terminal.
-Donde cada carpeta tiene 58 frames del vídeo.
-Para ejecutar: python -m src.data_management.data_ingestion.unstructured_data --max-folders 2 (el que queramos)
-"""
-import base64
-import argparse
+import os
 import time
+import json
+import base64
+import random
 from pathlib import Path
-from typing import Optional
-from src.common.kafka_client import get_kafka_producer
-from src.common.progress_bar import ProgressBar
+from kafka import KafkaProducer
 
-# --- CONFIGURACIÓN DE RUTAS Y KAFKA ---
-BASE_DIR = Path("src/downloaded_data/unstructured/images")
+"""
+Traffic Data Producer (Round Robin + Sequential Continuity)
+Description: Streams enriched image sequences with dynamic metadata.
+Handles continuous video sequences split across multiple folders.
+"""
 
-# AQUÍ TIENES LA VARIABLE QUE ME HAS PEDIDO:
-TOPIC_NAME_KAFKA = "traffic-images" 
+# --- CONFIGURATION ---
+SOURCE_DATA_PATH = Path("src/downloaded_data/unstructured/images")
+TOPIC_NAME = "traffic-images"
+KAFKA_SERVER = "localhost:9092"
+BATCH_SIZE = 5
 
-def ingest_unstructured_data(max_folders: Optional[int] = None):
+def get_clean_camera_id(folder_name):
     """
-    Lee los frames de las carpetas locales y los envía al topic de Kafka.
+    Extracts the root camera ID by splitting at the second underscore.
+    Example: 'Nd_O_725515' -> 'Nd_O'
     """
-    # 1. Validación de la ruta de las imágenes
-    if not BASE_DIR.exists():
-        print(f"Not able to find the path {BASE_DIR.absolute()}")
-        return
+    parts = folder_name.split('_')
+    return f"{parts[0]}_{parts[1]}" if len(parts) >= 2 else folder_name
 
-    # 2. Conexión con el Productor de Kafka
+def run_producer():
     try:
-        producer = get_kafka_producer()
+        producer = KafkaProducer(
+            bootstrap_servers=[KAFKA_SERVER],
+            value_serializer=lambda x: json.dumps(x).encode('utf-8')
+        )
     except Exception as e:
-        print(f"Not able to connect to Kafka {e}")
+        print(f"Failed to connect to Kafka: {e}")
         return
 
-    # 3. Obtener y filtrar las carpetas de vídeos (como Nd_O_...)
-    video_folders = sorted([f for f in BASE_DIR.iterdir() if f.is_dir()])
-    
-    if max_folders is not None:
-        video_folders = video_folders[:max_folders]
-        print(f"Ingesting only {max_folders} folders.")
+    # 1. Group sequential folders by their clean camera ID
+    folders = sorted([d for d in SOURCE_DATA_PATH.iterdir() if d.is_dir()])
+    camera_groups = {}
+    for f in folders:
+        camera_id = get_clean_camera_id(f.name)
+        if camera_id not in camera_groups: 
+            camera_groups[camera_id] = []
+        camera_groups[camera_id].append(f)
 
-    # 4. Listar todos los archivos .jpg de esas carpetas
-    all_frames = []
-    for folder in video_folders:
-        # CAMBIO AQUÍ: Ahora acepta .jpg, .JPG, .jpeg y .JPEG
-        frames_in_folder = [f for f in folder.iterdir() if f.suffix.lower() in ['.jpg', '.jpeg']]
-        all_frames.extend(frames_in_folder)
-    
-    total_frames = len(all_frames)
-    
-    if total_frames == 0:
-        print(f"No images .jpg to send.")
-        return
+    # 2. Initialize camera states and metadata
+    camera_data = {}
+    for camera_id, folders_list in camera_groups.items():
+        first_folder = folders_list[0]
+        base_metadata = {}
+        
+        # Read the initial JSON to detect vehicle types dynamically
+        json_path = first_folder / "frame0.json"
+        if json_path.exists():
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+                for shape in data.get('shapes', []):
+                    label = shape['label']
+                    base_metadata[label] = base_metadata.get(label, 0) + 1
 
-    print(f"Sending images to: {TOPIC_NAME_KAFKA}")
+        # Store the tracking state for each camera group
+        camera_data[camera_id] = {
+            "folders": folders_list,
+            "current_folder_idx": 0,
+            "current_file_ptr": 0,
+            "state": base_metadata,
+            "timer": time.time()
+        }
 
-    
-    with ProgressBar(total=total_frames, description="Sending to Kafka", unit="imgs") as progress:
-        for frame_path in all_frames:
-            try:
-                video_id = frame_path.parent.name
-                
-                # Leemos la imagen y la pasamos a Base64
-                with open(frame_path, "rb") as f:
-                    img_b64 = base64.b64encode(f.read()).decode('utf-8')
+    print("Producer initialized. Broadcasting channels via Round Robin...")
 
-                # Metadatos del mensaje
-                payload = {
-                    "escenario": "Traffic_NYC", 
-                    "video_id": video_id,
-                    "frame_id": frame_path.stem,
-                    "image_data": img_b64,
-                    "timestamp": time.time()
-                }
-                producer.send(TOPIC_NAME_KAFKA, value=payload)
-                
-                progress.update(1)
+    active = True
+    while active:
+        active = False
+        
+        for camera_id, info in camera_data.items():
+            folders = info["folders"]
+            folder_idx = info["current_folder_idx"]
             
-            except Exception as e:
-                progress.write(f"Error in the frame {frame_path.name}: {e}")
+            # Skip if this camera has processed all its fragmented folders
+            if folder_idx >= len(folders): 
+                continue 
+            
+            active = True
+            current_folder = folders[folder_idx]
+            files = sorted(list(current_folder.glob("*.jpg")))
+            ptr = info["current_file_ptr"]
 
-    # Forzamos que se envíen todos los mensajes pendientes
+            # 3. Dynamic Traffic Variation (10-second window)
+            if time.time() - info["timer"] > 10:
+                for label in info["state"]:
+                    current_value = info["state"][label]
+                    # Add/Subtract a random value proportional to the current traffic
+                    change = random.randint(-current_value, current_value) if current_value > 0 else random.randint(0, 1)
+                    info["state"][label] = max(0, current_value + change)
+                info["timer"] = time.time()
+
+            # 4. Transmit a batch of images (Round Robin approach)
+            for _ in range(BATCH_SIZE):
+                if ptr < len(files):
+                    img_path = files[ptr]
+                    with open(img_path, "rb") as f:
+                        img_b64 = base64.b64encode(f.read()).decode('utf-8')
+
+                    payload = {
+                        "video_id": camera_id,             # Clean ID (e.g., Nd_O)
+                        "source_folder": current_folder.name, # Original folder for traceability
+                        "frame_id": img_path.stem,
+                        "image_data": img_b64,
+                        "detections": info["state"],       # Current dynamic metadata
+                        "timestamp": time.time()
+                    }
+                    producer.send(TOPIC_NAME, value=payload)
+                    ptr += 1
+                else:
+                    # End of current folder reached; shift to the next fragment seamlessly
+                    info["current_folder_idx"] += 1
+                    info["current_file_ptr"] = 0
+                    break
+            
+            info["current_file_ptr"] = ptr
+            time.sleep(0.01) # Brief pause to stabilize network throughput
+
     producer.flush()
-    print(f"\n Ingestion finished in '{TOPIC_NAME_KAFKA}'.")
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Image ingestion to Kafka.")
-    
-    parser.add_argument(
-        "--max-folders",
-        type=int,
-        default=None,
-        help="Number of folders to process.",
-    )
-    
-    args = parser.parse_args()
-    if args.max_folders is not None and args.max_folders <= 0:
-        parser.error("The number of folders must be positive.")
-
-    return args
+    print("Images to kafka completed successfully.")
 
 if __name__ == "__main__":
-    cli_args = parse_args()
-    # Ejecutamos la función con el límite que pongamos en la consola
-    ingest_unstructured_data(max_folders=cli_args.max_folders)
+    run_producer()

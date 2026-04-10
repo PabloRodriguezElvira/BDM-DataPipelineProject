@@ -1,77 +1,126 @@
 import os
 import json
 import base64
+import time
+from datetime import datetime
 from kafka import KafkaConsumer
-'''
-Coge las imagenes que se han enviado a kafka en base 64 junto con el frame id y video id, las descodifica
-y las envia a una carpeta que he creado aquiBDM-LandingZoneProject\src\downloaded_data\Unstructured\real_time_images"
-la ruta seguramente habra que cambiarla 
-'''
 
-# --- CONFIGURACIÓN DE RUTAS Y KAFKA ---
-# La ruta exacta que me pasaste donde queremos que caigan las alertas
-OUTPUT_DIR = r"C:\Users\adals\OneDrive\Escritorio\Máster\BDM\Project\BDM-LandingZoneProject\src\downloaded_data\Unstructured\real_time_images"
+"""
+Local Aggregated Data Consumer
+Description: Saves real-time images and performs stream processing to 
+calculate 10-second averages. Outputs structured JSON reports exclusively 
+to the local camera directories for validation.
+"""
+
+# --- CONFIGURATION ---
+IMAGE_BASE_DIR = "src/downloaded_data/unstructured/real_time_images"
 TOPIC_NAME = "traffic-images"
+KAFKA_SERVER = "localhost:9092"
+WINDOW_SECONDS = 10
 
-def consume_images():
-    """
-    Lee los mensajes de Kafka en tiempo real, decodifica las imágenes
-    y las guarda en la carpeta de alertas.
-    """
-    # 1. Crear la carpeta destino si no existe
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    print(f"Iniciando consumidor... Las imágenes irán a:\n{OUTPUT_DIR}\n")
-    
-    # 2. Configurar el Consumidor de Kafka
-    # Usamos json.loads para entender el payload que mandó tu Productor
+def consume_and_aggregate():
+    # Ensure local base directory exists
+    os.makedirs(IMAGE_BASE_DIR, exist_ok=True)
+        
     try:
         consumer = KafkaConsumer(
             TOPIC_NAME,
-            bootstrap_servers=['localhost:9092'],
-            auto_offset_reset='earliest', # Lee las fotos que ya están en Kafka esperando
-            enable_auto_commit=True,
-            group_id='traffic-alerts-group',
+            bootstrap_servers=[KAFKA_SERVER],
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
     except Exception as e:
-        print(f"❌ No se pudo conectar a Kafka: {e}")
+        print(f"Failed to connect to Kafka: {e}")
         return
-        
-    print(f"🎧 Escuchando alertas en el topic '{TOPIC_NAME}'... (Pulsa Ctrl+C para salir)")
+
+    # Buffer memory per camera: { camera_id: { counts, frames, start_time } }
+    state = {} 
     
-    # 3. Bucle infinito para recibir datos en tiempo real
+    print("Consumer active. Saving images and calculating 10-second local averages...")
+    print("Press Ctrl+C at any time to safely stop the consumer.\n")
+    
     try:
         for message in consumer:
-            payload = message.value
+            data = message.value
+            camera_id = data.get("video_id") # Cleaned ID (e.g., Nd_O)
+            frame_id = data.get("frame_id")
+            detections = data.get("detections", {})
+            img_b64 = data.get("image_data", "")
+            msg_timestamp = data.get("timestamp", time.time())
+
+            today = datetime.now().strftime("%Y-%m-%d")
+            time_str = datetime.now().strftime("%H%M%S")
             
-            # Extraer los datos exactos que enviaste en el Productor
-            video_id = payload.get("video_id", "unknown_video")
-            frame_id = payload.get("frame_id", "unknown_frame")
-            img_b64 = payload.get("image_data", "")
+            # 1. Store Unstructured Data (Images)
+            # Path logic ensures continuity across original fragmented folders
+            camera_path = os.path.join(IMAGE_BASE_DIR, camera_id, today)
+            os.makedirs(camera_path, exist_ok=True)
             
-            if not img_b64:
-                print("Mensaje recibido sin datos de imagen, saltando...")
-                continue
+            # Save image with execution timestamp to prevent overwriting
+            image_filename = f"{time_str}_{frame_id}.jpg"
+            full_image_path = os.path.join(camera_path, image_filename)
+            
+            with open(full_image_path, "wb") as f:
+                f.write(base64.b64decode(img_b64))
                 
-            # Decodificar la imagen de Base64 a formato original (bytes)
-            image_bytes = base64.b64decode(img_b64)
-            
-            # Crear un nombre de archivo bonito y único (Ej: Nd_O_..._frame2.jpg)
-            file_name = f"{video_id}_{frame_id}.jpg"
-            file_path = os.path.join(OUTPUT_DIR, file_name)
-            
-            # Guardar físicamente la imagen en tu disco duro
-            with open(file_path, "wb") as f:
-                f.write(image_bytes)
+            # Print to know where the image has been saved
+            print(f"Frame saved in: {full_image_path}")
+
+            # 2. Accumulate Data for Stream Aggregation
+            if camera_id not in state:
+                # Initialize state with the timestamp of the VERY FIRST frame
+                state[camera_id] = {"counts": {}, "frames": 0, "start": msg_timestamp}
+
+            buffer = state[camera_id]
+            buffer["frames"] += 1
+            for label, count in detections.items():
+                buffer["counts"][label] = buffer["counts"].get(label, 0) + count
+
+            # 3. Time Window Trigger (Calculate Averages & Generate Reports)
+            if msg_timestamp - buffer["start"] >= WINDOW_SECONDS:
+                total_frames = buffer["frames"]
                 
-            print(f"✅ ¡Alerta guardada! -> {file_name}")
-            
+                # Calculate the average objects per frame over the window
+                averages = {}
+                for label, total in buffer["counts"].items():
+                    averages[label] = round(total / total_frames, 2)
+
+                # Format the exact start and end times
+                start_dt = datetime.fromtimestamp(buffer['start'])
+                end_dt = datetime.fromtimestamp(msg_timestamp)
+                
+                # Structure the final report
+                report = {
+                    "camera_id": camera_id,
+                    "date": today,
+                    "time_window_start": start_dt.strftime('%H:%M:%S'),
+                    "time_window_end": end_dt.strftime('%H:%M:%S'),
+                    "exact_window_seconds": round(msg_timestamp - buffer["start"], 2),
+                    "total_frames_processed": total_frames,
+                    "total_detections": buffer["counts"],
+                    "average_per_frame": averages
+                }
+                
+                # Naming convention indicates the exact start time of the first frame
+                start_time_str = start_dt.strftime('%H%M%S')
+                report_filename = f"report_{camera_id}_start_{start_time_str}.json"
+                
+                # Save locally within the camera's specific directory
+                reports_dir = os.path.join(camera_path, "reports")
+                os.makedirs(reports_dir, exist_ok=True)
+                with open(os.path.join(reports_dir, report_filename), "w") as f:
+                    json.dump(report, f, indent=4)
+                
+                print(f"\n[{camera_id}] 10s Window Closed. Generated: {report_filename} | Averages: {averages}\n")
+                
+                # Reset the aggregation window for this camera
+                state[camera_id] = {"counts": {}, "frames": 0, "start": msg_timestamp}
+
     except KeyboardInterrupt:
-        print("\n🛑 Consumidor detenido por el usuario.")
-    except Exception as e:
-        print(f"❌ Error inesperado durante el consumo: {e}")
+        print("\nManual interruption detected (Ctrl+C).")
+        print("Stopping consumer")
     finally:
         consumer.close()
+        print("Consumer connection closed successfully.")
 
 if __name__ == "__main__":
-    consume_images()
+    consume_and_aggregate()

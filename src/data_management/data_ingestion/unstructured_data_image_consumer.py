@@ -5,43 +5,39 @@ import time
 from datetime import datetime
 from kafka import KafkaConsumer
 
-"""
-Local Aggregated Data Consumer
-Description: Saves real-time images and performs stream processing to 
-calculate 10-second averages. Outputs structured JSON reports exclusively 
-to the local camera directories for validation.
-"""
+# --- PROJECT CONFIGURATION & MINIO INTEGRATION ---
+import src.common.global_variables as config
+from src.common.minio_client import get_minio_client
+# -------------------------------------------------
 
-# --- CONFIGURATION ---
 IMAGE_BASE_DIR = "src/downloaded_data/unstructured/real_time_images"
 TOPIC_NAME = "traffic-images"
-KAFKA_SERVER = "localhost:9092"
 WINDOW_SECONDS = 10
+LOG_INTERVAL = 5  # Seconds between each status update in console
 
 def consume_and_aggregate():
-    # Ensure local base directory exists
     os.makedirs(IMAGE_BASE_DIR, exist_ok=True)
         
     try:
         consumer = KafkaConsumer(
             TOPIC_NAME,
-            bootstrap_servers=[KAFKA_SERVER],
+            bootstrap_servers=[config.KAFKA_SERVER],
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
+        client = get_minio_client()
     except Exception as e:
-        print(f"Failed to connect to Kafka: {e}")
+        print(f"CRITICAL: Connection failed - {e}")
         return
 
-    # Buffer memory per camera: { camera_id: { counts, frames, start_time } }
     state = {} 
     
-    print("Consumer active. Saving images and calculating 10-second local averages...")
-    print("Press Ctrl+C at any time to safely stop the consumer.\n")
+    print(f"STATUS: Consumer active. Connected to Kafka at {config.KAFKA_SERVER}")
+    print(f"ACTION: Reporting status every {LOG_INTERVAL}s. Press Ctrl+C to stop.\n")
     
     try:
         for message in consumer:
             data = message.value
-            camera_id = data.get("video_id") # Cleaned ID (e.g., Nd_O)
+            camera_id = data.get("video_id")
             frame_id = data.get("frame_id")
             detections = data.get("detections", {})
             img_b64 = data.get("image_data", "")
@@ -50,77 +46,68 @@ def consume_and_aggregate():
             today = datetime.now().strftime("%Y-%m-%d")
             time_str = datetime.now().strftime("%H%M%S")
             
-            # 1. Store Unstructured Data (Images)
-            # Path logic ensures continuity across original fragmented folders
+            if camera_id not in state:
+                # 'last_log' tracks when we last printed the status for this camera
+                state[camera_id] = {"counts": {}, "frames": 0, "start": msg_timestamp, "last_log": msg_timestamp}
+
+            buffer = state[camera_id]
+            buffer["frames"] += 1
+            
+            # --- LOGGING EVERY 5 SECONDS (OR LOG_INTERVAL) ---
+            if msg_timestamp - buffer["last_log"] >= LOG_INTERVAL:
+                print(f"INFO: Camera {camera_id} has collected {buffer['frames']} frames so far...")
+                buffer["last_log"] = msg_timestamp # Reset log timer
+
+            # 1. Handle Unstructured Data (Images) - Quietly
             camera_path = os.path.join(IMAGE_BASE_DIR, camera_id, today)
             os.makedirs(camera_path, exist_ok=True)
-            
-            # Save image with execution timestamp to prevent overwriting
             image_filename = f"{time_str}_{frame_id}.jpg"
             full_image_path = os.path.join(camera_path, image_filename)
             
             with open(full_image_path, "wb") as f:
                 f.write(base64.b64decode(img_b64))
-                
-            # Print to know where the image has been saved
-            print(f"Frame saved in: {full_image_path}")
 
-            # 2. Accumulate Data for Stream Aggregation
-            if camera_id not in state:
-                # Initialize state with the timestamp of the VERY FIRST frame
-                state[camera_id] = {"counts": {}, "frames": 0, "start": msg_timestamp}
-
-            buffer = state[camera_id]
-            buffer["frames"] += 1
+            # 2. Accumulate Detections
             for label, count in detections.items():
                 buffer["counts"][label] = buffer["counts"].get(label, 0) + count
 
-            # 3. Time Window Trigger (Calculate Averages & Generate Reports)
+            # 3. Window Completion (10 Seconds)
             if msg_timestamp - buffer["start"] >= WINDOW_SECONDS:
                 total_frames = buffer["frames"]
-                
-                # Calculate the average objects per frame over the window
-                averages = {}
-                for label, total in buffer["counts"].items():
-                    averages[label] = round(total / total_frames, 2)
+                averages = {label: round(total / total_frames, 2) for label, total in buffer["counts"].items()}
 
-                # Format the exact start and end times
                 start_dt = datetime.fromtimestamp(buffer['start'])
-                end_dt = datetime.fromtimestamp(msg_timestamp)
+                report_filename = f"report_{camera_id}_{start_dt.strftime('%H%M%S')}.json"
+                local_report_path = os.path.join(camera_path, report_filename)
                 
-                # Structure the final report
                 report = {
                     "camera_id": camera_id,
                     "date": today,
-                    "time_window_start": start_dt.strftime('%H:%M:%S'),
-                    "time_window_end": end_dt.strftime('%H:%M:%S'),
-                    "exact_window_seconds": round(msg_timestamp - buffer["start"], 2),
-                    "total_frames_processed": total_frames,
-                    "total_detections": buffer["counts"],
-                    "average_per_frame": averages
+                    "avg_per_frame": averages,
+                    "total_frames_processed": total_frames
                 }
                 
-                # Naming convention indicates the exact start time of the first frame
-                start_time_str = start_dt.strftime('%H%M%S')
-                report_filename = f"report_{camera_id}_start_{start_time_str}.json"
-                
-                # Save locally within the camera's specific directory
-                reports_dir = os.path.join(camera_path, "reports")
-                os.makedirs(reports_dir, exist_ok=True)
-                with open(os.path.join(reports_dir, report_filename), "w") as f:
+                with open(local_report_path, "w") as f:
                     json.dump(report, f, indent=4)
+
+                # Upload to MinIO
+                try:
+                    minio_target = f"{config.LANDING_TEMPORAL_PATH.strip('/')}/{report_filename}"
+                    client.fput_object(config.LANDING_BUCKET, minio_target, local_report_path)
+                    print(f"SUCCESS: Metadata report uploaded to MinIO - {minio_target}")
+                except Exception as e:
+                    print(f"ERROR: MinIO transfer failed - {e}")
                 
-                print(f"\n[{camera_id}] 10s Window Closed. Generated: {report_filename} | Averages: {averages}\n")
+                print(f"PROCESS: 10s window closed for {camera_id}. Final averages: {averages}\n")
                 
-                # Reset the aggregation window for this camera
-                state[camera_id] = {"counts": {}, "frames": 0, "start": msg_timestamp}
+                # Reset window and log timer
+                state[camera_id] = {"counts": {}, "frames": 0, "start": msg_timestamp, "last_log": msg_timestamp}
 
     except KeyboardInterrupt:
-        print("\nManual interruption detected (Ctrl+C).")
-        print("Stopping consumer")
+        print("\nSIGINT: Closing system resources...")
     finally:
         consumer.close()
-        print("Consumer connection closed successfully.")
+        print("STATUS: Execution terminated successfully.")
 
 if __name__ == "__main__":
     consume_and_aggregate()

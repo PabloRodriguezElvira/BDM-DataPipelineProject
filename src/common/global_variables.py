@@ -35,3 +35,6 @@ MINIO_ROOT_PASSWORD = os.getenv(
 # Aliases aligned with env var names.
 MINIO_ACCESS_KEY = MINIO_ROOT_USER
 MINIO_SECRET_KEY = MINIO_ROOT_PASSWORD
+
+# Kafka server
+KAFKA_SERVER = "localhost:9092"

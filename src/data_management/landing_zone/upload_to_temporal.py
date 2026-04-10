@@ -10,6 +10,9 @@ Examples of usage:
 - Upload only one dataset:
   python -m src.data_management.landing_zone.upload_to_temporal --only structured
 
+- Upload at most 10 files per dataset:
+  python -m src.data_management.landing_zone.upload_to_temporal --max-files 10
+
 - Force overwrite of existing objects:
   python -m src.data_management.landing_zone.upload_to_temporal --overwrite
 """
@@ -58,13 +61,17 @@ def upload_dataset_to_temporal(
     client: Minio,
     dataset_name: str,
     local_base_dir: Path,
-    overwrite: bool
+    overwrite: bool,
+    max_files: int | None,
 ):
     if not local_base_dir.exists():
         print(f"[WARN] Path not found, skipping: {local_base_dir}")
         return
 
     files = _iter_files(local_base_dir)
+    if max_files is not None:
+        files = files[:max_files]
+
     if not files:
         print(f"[WARN] No files found in: {local_base_dir}")
         return
@@ -102,19 +109,30 @@ def parse_args():
     )
     parser.add_argument(
         "--only",
-        choices=["all", "structured", "semi_structured", "unstructured_audio"],
+        choices=["all", "structured", "semi_structured", "unstructured_audio", "unstructured_text"],
         default="all",
         help="Upload only one dataset type. Default uploads all.",
+    )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=None,
+        help="Maximum number of files to upload per dataset type in this run.",
     )
     parser.add_argument(
         "--overwrite",
         action="store_true",
         help="If set, existing objects in MinIO are replaced.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if args.max_files is not None and args.max_files <= 0:
+        parser.error("--max-files must be a positive integer.")
+
+    return args
 
 
-def main(only: str, overwrite: bool):
+def main(only: str, overwrite: bool, max_files: int | None):
     client = get_minio_client()
     _ensure_bucket_exists(client, config.LANDING_BUCKET)
 
@@ -127,7 +145,8 @@ def main(only: str, overwrite: bool):
             client=client,
             dataset_name=data_type,
             local_base_dir=local_path,
-            overwrite=overwrite
+            overwrite=overwrite,
+            max_files=max_files,
         )
 
 
@@ -136,4 +155,5 @@ if __name__ == "__main__":
     main(
         only=cli_args.only,
         overwrite=cli_args.overwrite,
+        max_files=cli_args.max_files,
     )

@@ -38,7 +38,16 @@ def classify_destination(object_name: str) -> Optional[str]:
     extension = PurePosixPath(normalized_relative_path).suffix.lower()
 
     if extension == ".json":
-        return f"{config.LANDING_PERSISTENT_PATH}semi_structured/{file_name}"
+        # if the JSON starts with meta_unstructured is the metadata coming from streaming images
+        if file_name.startswith("meta_unstructured_"):
+            base_name = file_name.replace("meta_unstructured_report_", "")
+            # We cut the last 12 characters in order to obtain the camera
+            camera_id = base_name[:-12]
+            # Send it to the corresponding camera 
+            return f"{config.LANDING_PERSISTENT_PATH}unstructured/images/{camera_id}/{file_name}"
+        # Other JSON goes to semi-structured
+        else:
+            return f"{config.LANDING_PERSISTENT_PATH}semi_structured/{file_name}"
 
     if extension == ".wav":
         return f"{config.LANDING_PERSISTENT_PATH}unstructured/audio/{file_name}"

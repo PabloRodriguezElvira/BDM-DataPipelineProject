@@ -41,24 +41,24 @@ def consume_and_aggregate():
             frame_id = data.get("frame_id")
             detections = data.get("detections", {})
             img_b64 = data.get("image_data", "")
-            msg_timestamp = data.get("timestamp", time.time())
+            
+            # --- CAMBIO CLAVE: Usamos el reloj de tu PC, no el del mensaje ---
+            current_time = time.time()
 
             today = datetime.now().strftime("%Y-%m-%d")
             time_str = datetime.now().strftime("%H%M%S")
             
             if camera_id not in state:
-                # 'last_log' tracks when we last printed the status for this camera
-                state[camera_id] = {"counts": {}, "frames": 0, "start": msg_timestamp, "last_log": msg_timestamp}
+                # Iniciamos con el tiempo real de tu PC
+                state[camera_id] = {"counts": {}, "frames": 0, "start": current_time, "last_log": current_time}
 
             buffer = state[camera_id]
             buffer["frames"] += 1
             
-            # --- LOGGING EVERY 5 SECONDS (OR LOG_INTERVAL) ---
-            if msg_timestamp - buffer["last_log"] >= LOG_INTERVAL:
-                print(f"INFO: Camera {camera_id} has collected {buffer['frames']} frames so far...")
-                buffer["last_log"] = msg_timestamp # Reset log timer
+            if current_time - buffer["last_log"] >= LOG_INTERVAL:
+                print(f"The Camera {camera_id} has collected {buffer['frames']} frames so far.")
+                buffer["last_log"] = current_time 
 
-            # 1. Handle Unstructured Data (Images) - Quietly
             camera_path = os.path.join(IMAGE_BASE_DIR, camera_id, today)
             os.makedirs(camera_path, exist_ok=True)
             image_filename = f"{time_str}_{frame_id}.jpg"
@@ -67,17 +67,17 @@ def consume_and_aggregate():
             with open(full_image_path, "wb") as f:
                 f.write(base64.b64decode(img_b64))
 
-            # 2. Accumulate Detections
             for label, count in detections.items():
                 buffer["counts"][label] = buffer["counts"].get(label, 0) + count
 
-            # 3. Window Completion (10 Seconds)
-            if msg_timestamp - buffer["start"] >= WINDOW_SECONDS:
+            # --- CAMBIO CLAVE: Comparamos el tiempo real con la ventana ---
+            # Prueba con WINDOW_SECONDS = 3 para asegurar que funciona rápido
+            if current_time - buffer["start"] >= WINDOW_SECONDS:
                 total_frames = buffer["frames"]
                 averages = {label: round(total / total_frames, 2) for label, total in buffer["counts"].items()}
 
                 start_dt = datetime.fromtimestamp(buffer['start'])
-                report_filename = f"report_{camera_id}_{start_dt.strftime('%H%M%S')}.json"
+                report_filename = f"meta_unstructured_report_{camera_id}_{start_dt.strftime('%H%M%S')}.json"
                 local_report_path = os.path.join(camera_path, report_filename)
                 
                 report = {
@@ -90,7 +90,6 @@ def consume_and_aggregate():
                 with open(local_report_path, "w") as f:
                     json.dump(report, f, indent=4)
 
-                # Upload to MinIO
                 try:
                     minio_target = f"{config.LANDING_TEMPORAL_PATH.strip('/')}/{report_filename}"
                     client.fput_object(config.LANDING_BUCKET, minio_target, local_report_path)
@@ -98,16 +97,16 @@ def consume_and_aggregate():
                 except Exception as e:
                     print(f"ERROR: MinIO transfer failed - {e}")
                 
-                print(f"PROCESS: 10s window closed for {camera_id}. Final averages: {averages}\n")
+                print(f"PROCESS: Window closed for {camera_id}. Final averages: {averages}\n")
                 
-                # Reset window and log timer
-                state[camera_id] = {"counts": {}, "frames": 0, "start": msg_timestamp, "last_log": msg_timestamp}
-
+                # Reseteamos con el tiempo actual
+                state[camera_id] = {"counts": {}, "frames": 0, "start": current_time, "last_log": current_time}
+                
     except KeyboardInterrupt:
-        print("\nSIGINT: Closing system resources...")
+        print("\nClosing system.")
     finally:
         consumer.close()
-        print("STATUS: Execution terminated successfully.")
+        print("STATUS: Execution ended successfully.")
 
 if __name__ == "__main__":
     consume_and_aggregate()

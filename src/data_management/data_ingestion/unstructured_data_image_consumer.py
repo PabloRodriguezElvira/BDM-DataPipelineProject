@@ -3,12 +3,15 @@ import json
 import base64
 import time
 from datetime import datetime
+import io
+import pytz
 
 from kafka import KafkaConsumer
-
 import src.common.global_variables as config
 from src.common.minio_client import get_minio_client
 
+# To make a realistic simulation we use New York time
+ny_timezone = pytz.timezone("America/New_York")
 
 def consume_and_aggregate():
     os.makedirs(config.UNSTRUCTURED_IMAGE_BASE_DIR, exist_ok=True)
@@ -27,90 +30,106 @@ def consume_and_aggregate():
     state = {}
 
     print(f"STATUS: Consumer active. Connected to Kafka at {config.KAFKA_SERVER}")
-    print(
-        f"ACTION: Reporting status every {config.UNSTRUCTURED_IMAGE_LOG_INTERVAL}s. "
-        "Press Ctrl+C to stop.\n"
-    )
+    print(f"ACTION: Reporting status every {config.UNSTRUCTURED_IMAGE_LOG_INTERVAL}s. Press Ctrl+C to stop.\n")
 
     try:
-        for message in consumer:
-            data = message.value
-            camera_id = data.get("video_id")
-            frame_id = data.get("frame_id")
-            detections = data.get("detections", {})
-            img_b64 = data.get("image_data", "")
-
+        while True:
+            # Non-blocking polling loop
+            records = consumer.poll(timeout_ms=1000)
             current_time = time.time()
-
             today = datetime.now().strftime("%Y-%m-%d")
-            time_str = datetime.now().strftime("%H%M%S")
 
-            if camera_id not in state:
-                state[camera_id] = {
-                    "counts": {},
-                    "frames": 0,
-                    "start": current_time,
-                    "last_log": current_time,
-                }
+            # Process incoming messages
+            if records:
+                for topic_partition, messages in records.items():
+                    for message in messages:
+                        data = message.value
+                        camera_id = data.get("video_id")
+                        frame_id = data.get("frame_id")
+                        detections = data.get("detections", {})
+                        img_b64 = data.get("image_data", "")
 
-            buffer = state[camera_id]
-            buffer["frames"] += 1
+                        time_str = datetime.now().strftime("%H%M%S")
 
-            if current_time - buffer["last_log"] >= config.UNSTRUCTURED_IMAGE_LOG_INTERVAL:
-                print(f"The Camera {camera_id} has collected {buffer['frames']} frames so far.")
-                buffer["last_log"] = current_time
+                        if camera_id not in state:
+                            state[camera_id] = {
+                                "counts": {},
+                                "frames": 0,
+                                "start": current_time,
+                                "last_log": current_time,
+                            }
 
-            camera_path = os.path.join(config.UNSTRUCTURED_IMAGE_BASE_DIR, camera_id, today)
-            os.makedirs(camera_path, exist_ok=True)
+                        buffer = state[camera_id]
+                        buffer["frames"] += 1
 
-            image_filename = f"{time_str}_{frame_id}.jpg"
-            full_image_path = os.path.join(camera_path, image_filename)
+                        # Create directory structure and persist image locally
+                        camera_path = os.path.join(config.UNSTRUCTURED_IMAGE_BASE_DIR, camera_id, today)
+                        os.makedirs(camera_path, exist_ok=True)
 
-            with open(full_image_path, "wb") as f:
-                f.write(base64.b64decode(img_b64))
+                        image_filename = f"{time_str}_{frame_id}.jpg"
+                        full_image_path = os.path.join(camera_path, image_filename)
 
-            for label, count in detections.items():
-                buffer["counts"][label] = buffer["counts"].get(label, 0) + count
+                        with open(full_image_path, "wb") as f:
+                            f.write(base64.b64decode(img_b64))
 
-            if current_time - buffer["start"] >= config.UNSTRUCTURED_IMAGE_WINDOW_SECONDS:
-                total_frames = buffer["frames"]
-                averages = {
-                    label: round(total / total_frames, 2)
-                    for label, total in buffer["counts"].items()
-                }
+                        for label, count in detections.items():
+                            buffer["counts"][label] = buffer["counts"].get(label, 0) + count
 
-                start_dt = datetime.fromtimestamp(buffer["start"])
-                report_filename = (
-                    f"meta_unstructured_report_{camera_id}_{start_dt.strftime('%H%M%S')}.json"
-                )
-                local_report_path = os.path.join(camera_path, report_filename)
+            # Evaluate time windows for all active cameras
+            cameras_to_reset = []
 
-                report = {
-                    "camera_id": camera_id,
-                    "date": today,
-                    "avg_per_frame": averages,
-                    "total_frames_processed": total_frames,
-                }
+            for cid, buffer in state.items():
+                if buffer["frames"] > 0:
+                    
+                    if current_time - buffer["last_log"] >= config.UNSTRUCTURED_IMAGE_LOG_INTERVAL:
+                        print(f"INFO: Camera {cid} has collected {buffer['frames']} frames so far.")
+                        buffer["last_log"] = current_time
 
-                with open(local_report_path, "w") as f:
-                    json.dump(report, f, indent=4)
+                    if current_time - buffer["start"] >= config.UNSTRUCTURED_IMAGE_WINDOW_SECONDS:
+                        total_frames = buffer["frames"]
+                        averages = {
+                            label: round(total / total_frames, 2)
+                            for label, total in buffer["counts"].items()
+                        }
 
-                try:
-                    minio_target = (
-                        f"{config.LANDING_TEMPORAL_PATH.strip('/')}/{report_filename}"
-                    )
-                    client.fput_object(
-                        config.LANDING_BUCKET,
-                        minio_target,
-                        local_report_path,
-                    )
-                    print(f"SUCCESS: Metadata report uploaded to MinIO - {minio_target}")
-                except Exception as e:
-                    print(f"ERROR: MinIO transfer failed - {e}")
+                        start_dt = datetime.fromtimestamp(buffer["start"], tz=pytz.utc).astimezone(ny_timezone)
+                        report_filename = f"meta_unstructured_report_{cid}_{start_dt.strftime('%H%M%S')}.json"
+                        
+                        #cid_path = os.path.join(config.UNSTRUCTURED_IMAGE_BASE_DIR, cid, today)
+                        #os.makedirs(cid_path, exist_ok=True)
+                        #local_report_path = os.path.join(cid_path, report_filename)
 
-                print(f"PROCESS: Window closed for {camera_id}. Final averages: {averages}\n")
+                        report = {
+                            "camera_id": cid,
+                            "date": today,
+                            "avg_per_frame": averages,
+                            "total_frames_processed": total_frames,
+                        }
 
-                state[camera_id] = {
+                        report_data = json.dumps(report, indent=4).encode('utf-8')
+                        report_stream = io.BytesIO(report_data)
+
+                        try:
+                            minio_target = f"{config.LANDING_TEMPORAL_PATH.strip('/')}/{report_filename}"
+                            
+                            # Upload directly from memory stream
+                            client.put_object(
+                                config.LANDING_BUCKET,
+                                minio_target,
+                                report_stream,
+                                len(report_data),
+                                content_type='application/json'
+                            )
+                            print(f"SUCCESS: Metadata report uploaded to MinIO - {minio_target}")
+                        except Exception as e:
+                            print(f"ERROR: MinIO transfer failed - {e}")
+
+                        print(f"PROCESS: Window closed for {cid}. Final averages: {averages}\n")
+                        cameras_to_reset.append(cid)
+
+            # Reset state for cameras whose aggregation window has closed
+            for cid in cameras_to_reset:
+                state[cid] = {
                     "counts": {},
                     "frames": 0,
                     "start": current_time,
@@ -118,7 +137,7 @@ def consume_and_aggregate():
                 }
 
     except KeyboardInterrupt:
-        print("\nClosing system.")
+        print("\nSTATUS: Closing system due to user interrupt.")
     finally:
         consumer.close()
         print("STATUS: Execution ended successfully.")

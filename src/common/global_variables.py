@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import os
 from pathlib import Path
 
@@ -117,8 +117,8 @@ UNSTRUCTURED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"
 # ------------- Unstructured image consumer -------------
 UNSTRUCTURED_IMAGE_BASE_DIR = "src/downloaded_data/unstructured/real_time_images"
 UNSTRUCTURED_IMAGE_TOPIC_NAME = "traffic-images"
-UNSTRUCTURED_IMAGE_WINDOW_SECONDS = 10
-UNSTRUCTURED_IMAGE_LOG_INTERVAL = 5
+UNSTRUCTURED_IMAGE_WINDOW_SECONDS = 15
+UNSTRUCTURED_IMAGE_LOG_INTERVAL = 15
 
 # ------------- Unstructured image producer -------------
 UNSTRUCTURED_IMAGE_SOURCE_DATA_PATH = Path("src/downloaded_data/unstructured/images")

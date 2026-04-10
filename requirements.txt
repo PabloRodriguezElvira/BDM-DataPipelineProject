@@ -16,3 +16,6 @@ tqdm
 pandas
 pyarrow
 deltalake
+
+# Timezones
+pytz

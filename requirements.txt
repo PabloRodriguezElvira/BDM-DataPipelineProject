@@ -19,6 +19,3 @@ deltalake
 
 # Timezones
 pytz
-
-# Airflow
-apache-airflow

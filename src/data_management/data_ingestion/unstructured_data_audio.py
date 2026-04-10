@@ -16,16 +16,13 @@ Examples of usage:
 
 import argparse
 import os
-import shutil
 from pathlib import Path
 from typing import Optional
+import shutil
 
+import src.common.global_variables as config
 from src.common.load_env import load_env_file
 from src.common.progress_bar import ProgressBar
-
-DATASET = "louisteitelbaum/911-recordings-first-6-seconds"
-OUT_DIR = Path("downloaded_data/unstructured/audio")
-AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
 
 
 def _configure_kagglehub_token():
@@ -41,7 +38,7 @@ def _download_dataset_to_cache(overwrite: bool) -> Path:
     import kagglehub
 
     dataset_path = kagglehub.dataset_download(
-        DATASET,
+        config.UNSTRUCTURED_AUDIO_DATASET,
         force_download=overwrite,
     )
 
@@ -52,11 +49,14 @@ def download_audio_from_kaggle(
     max_files: Optional[int],
     overwrite: bool,
 ):
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    config.UNSTRUCTURED_AUDIO_OUT_DIR.mkdir(parents=True, exist_ok=True)
     dataset_path = _download_dataset_to_cache(overwrite=overwrite)
 
     all_files = sorted([f for f in dataset_path.rglob("*") if f.is_file()])
-    audio_files = [f for f in all_files if f.suffix.lower() in AUDIO_EXTENSIONS]
+    audio_files = [
+        f for f in all_files
+        if f.suffix.lower() in config.UNSTRUCTURED_AUDIO_EXTENSIONS
+    ]
     selected_files = audio_files[:max_files] if max_files is not None else audio_files
 
     total_files = len(selected_files)
@@ -68,7 +68,7 @@ def download_audio_from_kaggle(
         unit_scale=False,
     ) as progress:
         for source_path in selected_files:
-            output_path = OUT_DIR / source_path.name
+            output_path = config.UNSTRUCTURED_AUDIO_OUT_DIR / source_path.name
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
             if output_path.exists() and not overwrite:
@@ -81,7 +81,7 @@ def download_audio_from_kaggle(
             progress.write(f"[OK] {output_path}")
             progress.update(1)
 
-    print(f"[OK] Copied {copied} audio files in {OUT_DIR}")
+    print(f"[OK] Copied {copied} audio files in {config.UNSTRUCTURED_AUDIO_OUT_DIR}")
 
 
 def parse_args():

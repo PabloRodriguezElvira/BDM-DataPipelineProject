@@ -26,60 +26,66 @@ import csv
 import io
 from pathlib import Path
 from typing import Optional
+
 import requests
+
+import src.common.global_variables as config
 from src.common.progress_bar import ProgressBar
 
-API_URL = "https://data.cityofnewyork.us/resource/h9gi-nx95.csv"
-DEFAULT_LIMIT = 50_000
-OUT_DIR = Path("downloaded_data/structured")
 
-
-# Downloads the full dataset by paginating in batches and writing each batch to a separate CSV.
-def download_full_dataset_in_parts(limit: int = DEFAULT_LIMIT, max_csvs: Optional[int] = None):
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def download_full_dataset_in_parts(
+    limit: int = config.STRUCTURED_DEFAULT_LIMIT,
+    max_csvs: Optional[int] = None,
+):
+    config.STRUCTURED_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     offset = 0
     total = 0
     part_number = 1
     progress_total = max_csvs * limit if max_csvs is not None else None
 
-    with ProgressBar(total=progress_total, description="Downloading NYC collisions", unit="rows", unit_scale=False) as progress:
+    with ProgressBar(
+        total=progress_total,
+        description="Downloading NYC collisions",
+        unit="rows",
+        unit_scale=False,
+    ) as progress:
         while True:
             if max_csvs is not None and part_number > max_csvs:
                 progress.write(f"[STOP] max_csvs={max_csvs} reached.")
                 break
 
-            part_path = OUT_DIR / f"nyc_collisions_part_{part_number:04d}.csv"
+            part_path = config.STRUCTURED_OUT_DIR / f"nyc_collisions_part_{part_number:04d}.csv"
 
-            # If the part exists, it is not downloaded.
             if part_path.exists():
                 existing_rows = count_rows_in_csv(part_path)
 
-                # If we don't have any row in the CSV it can mean that the download has failed or it is corrupted.
-                # We should try to download again.
                 if existing_rows > 0:
                     total += existing_rows
                     progress.update(existing_rows)
-                    progress.write(f"[SKIP] {part_path} already exists -> {existing_rows} rows (accumulated: {total})")
+                    progress.write(
+                        f"[SKIP] {part_path} already exists -> {existing_rows} rows (accumulated: {total})"
+                    )
 
-                    # If there are fewer rows than the configured limit, it is the last part.
                     if existing_rows < limit:
                         break
 
                     offset += limit
                     part_number += 1
                     continue
-            
-            # Download the CSV part.
-            params = {"$limit": limit, "$offset": offset}
-            r = requests.get(API_URL, params=params, timeout=60)
-            r.raise_for_status()
 
-            reader = csv.DictReader(io.StringIO(r.text))
+            params = {"$limit": limit, "$offset": offset}
+            response = requests.get(
+                config.STRUCTURED_API_URL,
+                params=params,
+                timeout=config.STRUCTURED_REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+
+            reader = csv.DictReader(io.StringIO(response.text))
             rows = list(reader)
             batch_size = len(rows)
 
-            # Create the CSV
             if batch_size == 0:
                 break
 
@@ -98,13 +104,13 @@ def download_full_dataset_in_parts(limit: int = DEFAULT_LIMIT, max_csvs: Optiona
             offset += limit
             part_number += 1
 
-    print(f"[OK]: {total} rows in {OUT_DIR}")
+    print(f"[OK]: {total} rows in {config.STRUCTURED_OUT_DIR}")
 
 
 def count_rows_in_csv(file_path: Path) -> int:
     with file_path.open("r", encoding="utf-8", newline="") as f_in:
         reader = csv.reader(f_in)
-        next(reader, None)  # Skip header
+        next(reader, None)
         return sum(1 for _ in reader)
 
 
@@ -113,8 +119,8 @@ def parse_args():
     parser.add_argument(
         "--limit",
         type=int,
-        default=DEFAULT_LIMIT,
-        help=f"Rows per CSV file (default: {DEFAULT_LIMIT}).",
+        default=config.STRUCTURED_DEFAULT_LIMIT,
+        help=f"Rows per CSV file (default: {config.STRUCTURED_DEFAULT_LIMIT}).",
     )
     parser.add_argument(
         "--max-csvs",

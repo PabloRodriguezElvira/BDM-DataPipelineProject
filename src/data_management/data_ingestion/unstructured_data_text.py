@@ -17,20 +17,13 @@ Examples of usage:
 import argparse
 import json
 import os
-import re
 import shutil
-import unicodedata
 from pathlib import Path
 from typing import Optional
 
+import src.common.global_variables as config
 from src.common.load_env import load_env_file
 from src.common.progress_bar import ProgressBar
-
-DATASET = "rmisra/news-category-dataset"
-OUT_DIR = Path("downloaded_data/unstructured/text")
-JSON_EXTENSIONS = {".json", ".jsonl", ".ndjson"}
-TEXT_EXTENSIONS = {".txt", ".csv", ".tsv"}
-MAX_FILENAME_LENGTH = 80
 
 
 def _configure_kagglehub_token():
@@ -46,7 +39,7 @@ def _download_dataset_to_cache(overwrite: bool) -> Path:
     import kagglehub
 
     dataset_path = kagglehub.dataset_download(
-        DATASET,
+        config.UNSTRUCTURED_TEXT_DATASET,
         force_download=overwrite,
     )
 
@@ -76,7 +69,7 @@ def _write_article_txt(
     article_index: int,
     overwrite: bool,
 ) -> bool:
-    output_path = OUT_DIR / f"{article_index:06d}.txt"
+    output_path = config.UNSTRUCTURED_TEXT_OUT_DIR / f"{article_index:06d}.txt"
 
     if output_path.exists() and not overwrite:
         return False
@@ -134,10 +127,10 @@ def _delete_json_if_needed(source_path: Path, completed_full_file: bool):
     if not completed_full_file:
         return
 
-    if source_path.exists() and source_path.parent == OUT_DIR:
+    if source_path.exists() and source_path.parent == config.UNSTRUCTURED_TEXT_OUT_DIR:
         source_path.unlink()
 
-    local_copy = OUT_DIR / source_path.name
+    local_copy = config.UNSTRUCTURED_TEXT_OUT_DIR / source_path.name
     if local_copy.exists() and local_copy != source_path:
         local_copy.unlink()
 
@@ -185,7 +178,7 @@ def _copy_plain_text_files(
             if max_files is not None and copied >= max_files:
                 break
 
-            output_path = OUT_DIR / source_path.name
+            output_path = config.UNSTRUCTURED_TEXT_OUT_DIR / source_path.name
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
             if output_path.exists() and not overwrite:
@@ -203,10 +196,14 @@ def download_text_from_kaggle(
     max_files: Optional[int],
     overwrite: bool,
 ):
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    config.UNSTRUCTURED_TEXT_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     local_json_files = sorted(
-        [f for f in OUT_DIR.iterdir() if f.is_file() and f.suffix.lower() in JSON_EXTENSIONS]
+        [
+            f
+            for f in config.UNSTRUCTURED_TEXT_OUT_DIR.iterdir()
+            if f.is_file() and f.suffix.lower() in config.UNSTRUCTURED_TEXT_JSON_EXTENSIONS
+        ]
     )
     if local_json_files:
         converted = _process_json_sources(
@@ -214,13 +211,19 @@ def download_text_from_kaggle(
             max_files=max_files,
             overwrite=overwrite,
         )
-        print(f"[OK] Created {converted} text files in {OUT_DIR}")
+        print(f"[OK] Created {converted} text files in {config.UNSTRUCTURED_TEXT_OUT_DIR}")
         return
 
     dataset_path = _download_dataset_to_cache(overwrite=overwrite)
     all_files = sorted([f for f in dataset_path.rglob("*") if f.is_file()])
-    json_files = [f for f in all_files if f.suffix.lower() in JSON_EXTENSIONS]
-    text_files = [f for f in all_files if f.suffix.lower() in TEXT_EXTENSIONS]
+    json_files = [
+        f for f in all_files
+        if f.suffix.lower() in config.UNSTRUCTURED_TEXT_JSON_EXTENSIONS
+    ]
+    text_files = [
+        f for f in all_files
+        if f.suffix.lower() in config.UNSTRUCTURED_TEXT_FILE_EXTENSIONS
+    ]
 
     converted = 0
     if json_files:
@@ -239,7 +242,10 @@ def download_text_from_kaggle(
             overwrite=overwrite,
         )
 
-    print(f"[OK] Created {converted} text files and copied {copied} text files in {OUT_DIR}")
+    print(
+        f"[OK] Created {converted} text files and copied {copied} text files in "
+        f"{config.UNSTRUCTURED_TEXT_OUT_DIR}"
+    )
 
 
 def parse_args():

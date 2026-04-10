@@ -1,5 +1,40 @@
 version: '3.8'
 
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.1
+  env_file:
+    - .env
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__WEBSERVER__SECRET_KEY: airflow_secret_key
+    MINIO_ENDPOINT: minio:9000
+    MINIO_ACCESS_KEY: admin
+    MINIO_SECRET_KEY: admin123
+    MINIO_SECURE: "false"
+    PROJECT_ROOT: /app
+    PYTHON_BIN: python
+    _PIP_ADDITIONAL_REQUIREMENTS: >-
+      minio
+      kafka-python
+      requests
+      kagglehub
+      psycopg2-binary
+  volumes:
+    - .:/app
+    - ./dags:/opt/airflow/dags
+    - airflow_logs:/opt/airflow/logs
+    - airflow_plugins:/opt/airflow/plugins
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_started
+    kafka:
+      condition: service_started
+
 services:
   app:
     build:
@@ -23,8 +58,8 @@ services:
     image: minio/minio:latest
     container_name: minio
     ports:
-      - "9000:9000"   
-      - "9090:9090"   
+      - "9000:9000"
+      - "9090:9090"
     environment:
       MINIO_ROOT_USER: admin
       MINIO_ROOT_PASSWORD: admin123
@@ -49,12 +84,10 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      # --- CORRECCIÓN DE CONECTIVIDAD ---
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
-      # ----------------------------------
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_MESSAGE_MAX_BYTES: 5242880
       KAFKA_MAX_REQUEST_SIZE: 5242880
@@ -68,9 +101,62 @@ services:
       - "8081:8080"
     environment:
       - KAFKA_CLUSTERS_0_NAME=local
-      # --- CORRECCIÓN PARA EL UI ---
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:29092
-      # -----------------------------
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
     depends_on:
       - kafka
+
+  postgres:
+    image: postgres:15
+    container_name: airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_db:/var/lib/postgresql/data
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate && \
+        airflow users create \
+          --username admin \
+          --password admin \
+          --firstname admin \
+          --lastname admin \
+          --role Admin \
+          --email admin@example.com
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_db:
+  airflow_logs:
+  airflow_plugins:

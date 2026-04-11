@@ -111,13 +111,13 @@ UNSTRUCTURED_AUDIO_OUT_DIR = Path("downloaded_data/unstructured/audio")
 UNSTRUCTURED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
 
 # ------------- Unstructured image consumer -------------
-UNSTRUCTURED_IMAGE_BASE_DIR = "src/downloaded_data/unstructured/real_time_images"
+UNSTRUCTURED_IMAGE_BASE_DIR = "downloaded_data/unstructured/real_time_images"
 UNSTRUCTURED_IMAGE_TOPIC_NAME = "traffic-images"
 UNSTRUCTURED_IMAGE_WINDOW_SECONDS = 15
 UNSTRUCTURED_IMAGE_LOG_INTERVAL = 15
 
 # ------------- Unstructured image producer -------------
-UNSTRUCTURED_IMAGE_SOURCE_DATA_PATH = Path("src/downloaded_data/unstructured/images")
+UNSTRUCTURED_IMAGE_SOURCE_DATA_PATH = Path("downloaded_data/unstructured/images")
 UNSTRUCTURED_IMAGE_BATCH_SIZE = 5
 UNSTRUCTURED_IMAGE_TRAFFIC_UPDATE_SECONDS = 10
 UNSTRUCTURED_IMAGE_SLEEP_SECONDS = 0.01

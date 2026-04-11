@@ -2,13 +2,9 @@ import io
 
 import pandas as pd
 import pyarrow as pa
-from deltalake.writer import write_deltalake
 from minio import Minio
 
 import src.common.global_variables as config
-
-
-
 
 def iter_structured_csvs(client: Minio):
     """
@@ -56,63 +52,25 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_delta_table_uri() -> str:
+def dataframe_to_arrow_table(df: pd.DataFrame) -> pa.Table:
     """
-    Delta table location inside MinIO persistent landing.
+    Convert a normalized DataFrame into an Arrow Table ready for Delta Lake.
     """
-    return f"s3://{config.LANDING_BUCKET}/{config.LANDING_PERSISTENT_PATH}structured/delta"
+    return pa.Table.from_pandas(df, preserve_index=False)
 
 
-def get_storage_options() -> dict:
+def process_csv_object(client: Minio, object_name: str) -> pa.Table | None:
     """
-    Storage options for Delta Lake to connect to MinIO.
-    """
-    return {
-        "AWS_ACCESS_KEY_ID": config.MINIO_ROOT_USER,
-        "AWS_SECRET_ACCESS_KEY": config.MINIO_ROOT_PASSWORD,
-        "AWS_ENDPOINT_URL": config.MINIO_ENDPOINT_URL,
-        "AWS_REGION": "us-east-1",
-        "AWS_ALLOW_HTTP": "true",
-        "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
-    }
-
-
-def write_dataframe_to_delta(df: pd.DataFrame):
-    """
-    Append DataFrame to Delta table in persistent landing.
-    """
-    arrow_table = pa.Table.from_pandas(df, preserve_index=False)
-
-    write_deltalake(
-        get_delta_table_uri(),
-        arrow_table,
-        mode="append",
-        storage_options=get_storage_options(),
-    )
-
-
-def remove_temporal_object(client: Minio, object_name: str):
-    """
-    Remove processed CSV from temporal landing.
-    """
-    client.remove_object(config.LANDING_BUCKET, object_name)
-
-
-def process_csv_object(client: Minio, object_name: str):
-    """
-    Full process for one CSV:
-    temporal CSV -> DataFrame -> Delta table -> delete temporal CSV
+    Convert one temporal CSV into an Arrow Table ready to be written as Delta.
     """
     df = download_csv_as_dataframe(client, object_name)
     df = normalize_dataframe(df)
 
     if df.empty:
-        print(f"[WARN] Empty CSV, deleting temporal object: {object_name}")
-        remove_temporal_object(client, object_name)
-        return
+        print(f"[WARN] Empty CSV, skipping Delta conversion: {object_name}")
+        return None
 
     df["source_file"] = object_name
 
-    write_dataframe_to_delta(df)
-    remove_temporal_object(client, object_name)
-    print(f"[OK] {object_name} appended to Delta table")
+    print(f"[OK] {object_name} converted into Arrow table")
+    return dataframe_to_arrow_table(df)

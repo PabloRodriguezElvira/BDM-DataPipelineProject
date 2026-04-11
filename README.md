@@ -1,57 +1,121 @@
-  Landing Zone BDM project. List of APIs we can use:
+# BDM Landing Zone Project
 
-  # Structured data:
-  - NYC Motor Vehicle Collisions (csv): 
-  - Link: https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95/about_data
-  (El dataset tiene 2246028 filas. Usando la API se pueden obtener filas de 1000 en 1000, de alguna manera se puede hacer para descargar todo el dataset y dividirlo en varios CSV.)
+## Description
 
-  # Semi-structured data: Weather Forecast
-  - Link: https://www.weather.gov/documentation/services-web-api
+This project implements a landing zone pipeline for a small data platform. It ingests structured, semi-structured, and unstructured datasets, uploads them to a temporal area in MinIO, and then processes them into a persistent area. During this process, the project also generates Delta Lake tables for structured data and metadata.
 
-  # Unstructured data
+The platform includes:
 
-  ## Traffic images
-  - Information about the dataset: https://math-ml-x.github.io/TrafficCAM/
-  - Download the data: https://github.com/Math-ML-X/TrafficCAM/blob/main/TrafficCAM-download.md
-  (este dataset se podría usar con Kafka, si vemos que 2GB de imágenes son muchas recortamos)
+- Batch ingestion scripts for multiple dataset types
+- A landing zone process from temporal to persistent storage
+- Delta Lake integration
+- Kafka-based streaming for image data
+- Airflow orchestration for batch and streaming workflows
 
-  ## 911 recordings (audio)
-  - Link: https://www.kaggle.com/datasets/louisteitelbaum/911-recordings-first-6-seconds
-  (en el link hay informacion de como usar la API de Kaggle para descargar el dataset)
-  - Ingestion script:
-    `python -m src.data_management.data_ingestion.unstructured_data_audio --max-files 20`
-  - Kaggle auth options (required):
-    1. `.env` with `KAGGLE_API_TOKEN`
-    2. `.env` with `KAGGLE_USERNAME` (or `KAGGLE_API_USERNAME`)
-    3. If token is `username:key`, username is inferred automatically
+## Main Flow
 
-  ## Optional Texts.
+1. Download datasets locally into `downloaded_data/`
+2. Upload files to `temporal_landing/` in MinIO
+3. Process them into `persistent_landing/`
+4. Write Delta Lake tables where applicable
 
+## Dataset Types
 
+- Structured: NYC motor vehicle collisions CSV files
+- Semi-structured: weather forecast JSON files
+- Unstructured audio: Kaggle audio files
+- Unstructured text: text-based news data
+- Unstructured images: Kafka streaming flow
 
-  ## Cambios
-  Dockerfile -> añadido el pip install requirements ahí, solo hace falta hacer docker compose up --build -d
+## Run With Docker
 
-  data_ingestion solo tiene la lógica para descargar los datasets en local. upload_to_temporal se encarga de mover los datasets
-  a temporal bucket y landing_zone mueve de temporal a persistent.
+Start the full environment with:
 
-  he quitado que en minio_manager se generen las subcarpetas de la landing_zone, no hacen falta.
+```bash
+docker compose up --build -d
+```
 
-  ## Cómo ejecutar
-  Se puede ejecutar el proyecto usando Docker:
-  - docker compose up --build -d
+This builds the Docker image and installs the dependencies from `requirements.txt`.
 
-  Para ejecutar cada uno de los scripts:
-  - docker compose exec app python -m src.data_management.data_ingestion.unstructured_data_audio
+Main services:
 
-  También se puede ejecutar con una instalación de Python en local.
-  - pip install -r requirements.txt
+- Airflow: `http://localhost:8080`
+- MinIO API: `http://localhost:9000`
+- MinIO Console: `http://localhost:9090`
+- Kafka UI: `http://localhost:8081`
 
-  Para ejecutar cada uno de los scripts:
-  - python -m src.data_management.data_ingestion.unstructured_data_audio
+## Run With Python
 
-  ## TODO
-  - guardar metadatos de todos los datos con Delta Lake
-  - mirar tipo de dato no estructurado texto -> Pablo
-  - hot path: que el kafka envie los datos a una carpeta de fuera de la landing zone -> Pau
+Install dependencies:
 
+```bash
+pip install -r requirements.txt
+```
+
+Example command:
+
+```bash
+python -m src.data_management.data_ingestion.structured_data
+```
+
+## Execution Options
+
+The project can be executed in two ways:
+
+- From the terminal, by running the Python modules directly
+- From Airflow, using the DAGs defined in `dags/orchestrator.py`
+
+Airflow includes:
+
+- `bdm_batch_pipeline` for batch ingestion and landing zone processing
+- `bdm_streaming_bootstrap` for the streaming image flow
+
+Default Airflow credentials:
+
+- Username: `admin`
+- Password: `admin`
+
+Default MinIO credentials:
+
+- Username: `admin`
+- Password: `admin123`
+
+## Common Commands
+
+Download structured data:
+
+```bash
+python -m src.data_management.data_ingestion.structured_data --limit 50000 --max-csvs 5
+```
+
+Run the same command inside Docker:
+
+```bash
+docker compose exec app python -m src.data_management.data_ingestion.structured_data --limit 50000 --max-csvs 5
+```
+
+Upload local files to temporal landing:
+
+```bash
+python -m src.data_management.landing_zone.upload_to_temporal
+```
+
+Process the landing zone:
+
+```bash
+python -m src.data_management.landing_zone.landing_zone
+```
+
+Show CLI help:
+
+```bash
+python -m src.data_management.landing_zone.upload_to_temporal --help
+```
+
+## Notes
+
+- `structured_to_delta.py` converts structured CSV data before it is written as Delta Lake
+- `landing_zone.py` is responsible for persisting processed data into MinIO
+- Some ingestion scripts may require credentials in `.env`, especially Kaggle-based ones
+- For the Kafka image streaming workflow, a small test dataset will be provided in `downloaded_data/unstructured/images` with 11 folders and around 30 images per folder
+- If the full image dataset is needed, it can be downloaded from: `https://github.com/Math-ML-X/TrafficCAM/blob/main/TrafficCAM-download.md`

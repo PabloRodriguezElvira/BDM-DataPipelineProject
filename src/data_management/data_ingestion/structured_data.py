@@ -37,6 +37,7 @@ def download_full_dataset_in_parts(
     limit: int = config.STRUCTURED_DEFAULT_LIMIT,
     max_csvs: Optional[int] = None,
 ):
+    """Download the structured dataset in paginated CSV parts."""
     config.STRUCTURED_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     offset = 0
@@ -108,6 +109,7 @@ def download_full_dataset_in_parts(
 
 
 def count_rows_in_csv(file_path: Path) -> int:
+    """Count data rows in an existing CSV file."""
     with file_path.open("r", encoding="utf-8", newline="") as f_in:
         reader = csv.reader(f_in)
         next(reader, None)
@@ -115,6 +117,7 @@ def count_rows_in_csv(file_path: Path) -> int:
 
 
 def parse_args():
+    """Parse CLI arguments for structured ingestion."""
     parser = argparse.ArgumentParser(description="Download NYC collisions dataset in CSV parts.")
     parser.add_argument(
         "--limit",

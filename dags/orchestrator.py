@@ -164,7 +164,7 @@ with DAG(
     tags=config.AIRFLOW_STREAMING_TAGS,
     params={
         "streaming_timeout_seconds": Param(
-            120,
+            600,
             type="integer",
             minimum=1,
             title="Streaming timeout seconds",
@@ -173,22 +173,30 @@ with DAG(
     },
 ) as streaming_dag:
 
-    start_consumer = BashOperator(
-        task_id="start_image_consumer",
+    run_image_stream = BashOperator(
+        task_id="run_image_stream",
         bash_command=(
-            f"cd {config.PROJECT_ROOT} && "
-            "timeout {{ params.streaming_timeout_seconds }} "
-            f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.unstructured_data_image_consumer"
+            f"""
+            cd {config.PROJECT_ROOT}
+            timeout {{{{ params.streaming_timeout_seconds }}}} {config.PYTHON_BIN} -m src.data_management.data_ingestion.unstructured_data_image_consumer &
+            consumer_pid=$!
+
+            sleep 5
+
+            timeout {{{{ params.streaming_timeout_seconds }}}} {config.PYTHON_BIN} -m src.data_management.data_ingestion.unstructured_data_image_producer
+            producer_exit=$?
+
+            wait $consumer_pid
+            consumer_exit=$?
+
+            if [ "$producer_exit" -ne 0 ]; then
+              exit "$producer_exit"
+            fi
+
+            if [ "$consumer_exit" -ne 0 ] && [ "$consumer_exit" -ne 124 ]; then
+              exit "$consumer_exit"
+            fi
+            """
         ),
     )
-
-    start_producer = BashOperator(
-        task_id="start_image_producer",
-        bash_command=(
-            f"cd {config.PROJECT_ROOT} && "
-            "timeout {{ params.streaming_timeout_seconds }} "
-            f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.unstructured_data_image_producer"
-        ),
-    )
-
-    start_consumer >> start_producer
+    

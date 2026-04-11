@@ -27,6 +27,7 @@ from src.common.progress_bar import ProgressBar
 
 
 def fetch_gridpoint(lat: float, lon: float) -> tuple[str, int, int]:
+    """Resolve a latitude and longitude to an NWS gridpoint."""
     response = requests.get(
         config.POINTS_URL.format(lat=lat, lon=lon),
         headers=config.REQUEST_HEADERS,
@@ -39,6 +40,7 @@ def fetch_gridpoint(lat: float, lon: float) -> tuple[str, int, int]:
 
 
 def download_weather_jsons(max_locations: Optional[int], include_hourly: bool):
+    """Download forecast JSON files for the selected NYC locations."""
     config.SEMI_STRUCTURED_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     selected_locations = (
@@ -108,6 +110,7 @@ def download_weather_jsons(max_locations: Optional[int], include_hourly: bool):
 
 
 def parse_args():
+    """Parse CLI arguments for semi-structured ingestion."""
     parser = argparse.ArgumentParser(description="Download NYC weather JSON files from the NWS API.")
     parser.add_argument(
         "--max-locations",

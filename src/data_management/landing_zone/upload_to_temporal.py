@@ -36,15 +36,18 @@ DATASET_CONFIG = {
 
 
 def _ensure_bucket_exists(client: Minio, bucket: str):
+    """Create the landing bucket if it does not exist."""
     if not client.bucket_exists(bucket):
         client.make_bucket(bucket)
 
 
 def _iter_files(base_dir: Path):
+    """List all files under a local dataset folder."""
     return sorted(path for path in base_dir.rglob("*") if path.is_file())
 
 
 def _object_exists(client: Minio, bucket: str, object_name: str) -> bool:
+    """Check whether an object already exists in MinIO."""
     try:
         client.stat_object(bucket, object_name)
         return True
@@ -60,6 +63,7 @@ def upload_dataset_to_temporal(
     local_base_dir: Path,
     max_files: int | None,
 ):
+    """Upload one local dataset folder into temporal landing."""
     if not local_base_dir.exists():
         print(f"[WARN] Path not found, skipping: {local_base_dir}")
         return
@@ -100,6 +104,7 @@ def upload_dataset_to_temporal(
 
 
 def parse_args():
+    """Parse CLI arguments for temporal uploads."""
     parser = argparse.ArgumentParser(
         description="Upload local datasets to MinIO temporal landing."
     )
@@ -124,6 +129,7 @@ def parse_args():
 
 
 def main(only: str, max_files: int | None):
+    """Upload the selected local datasets to temporal landing."""
     client = get_minio_client()
     _ensure_bucket_exists(client, config.LANDING_BUCKET)
 

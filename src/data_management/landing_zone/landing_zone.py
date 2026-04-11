@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Optional
 
+from deltalake.writer import write_deltalake
 from minio import Minio
 from minio.commonconfig import CopySource
 from minio.error import S3Error
@@ -124,6 +125,46 @@ def upload_json_bytes(client: Minio, object_name: str, payload: bytes):
         len(payload),
         content_type="application/json",
     )
+
+
+def get_structured_delta_uri() -> str:
+    """
+    Delta table location for structured data inside persistent landing.
+    """
+    return f"s3://{config.LANDING_BUCKET}/{config.LANDING_PERSISTENT_PATH}structured/delta"
+
+
+def get_delta_storage_options() -> dict:
+    """
+    Storage options for Delta Lake to connect to MinIO.
+    """
+    return {
+        "AWS_ACCESS_KEY_ID": config.MINIO_ROOT_USER,
+        "AWS_SECRET_ACCESS_KEY": config.MINIO_ROOT_PASSWORD,
+        "AWS_ENDPOINT_URL": config.MINIO_ENDPOINT_URL,
+        "AWS_REGION": "us-east-1",
+        "AWS_ALLOW_HTTP": "true",
+        "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
+    }
+
+
+def process_structured_csv_object(client: Minio, object_name: str):
+    """
+    Convert a temporal CSV and persist it into the structured Delta table in MinIO.
+    """
+    arrow_table = process_csv_object(client, object_name)
+    if arrow_table is None:
+        client.remove_object(config.LANDING_BUCKET, object_name)
+        return
+
+    write_deltalake(
+        get_structured_delta_uri(),
+        arrow_table,
+        mode="append",
+        schema_mode="merge",
+        storage_options=get_delta_storage_options(),
+    )
+    client.remove_object(config.LANDING_BUCKET, object_name)
 
 
 def build_semi_structured_metadata(
@@ -331,31 +372,6 @@ def build_unstructured_audio_metadata(
         },
     }
 
-def build_unstructured_image_report_metadata(
-    source_object: str,
-    data_destination: str,
-    raw_bytes: bytes,
-) -> dict:
-    """
-    Build technical and audit metadata for the streaming JSON report.
-    This ensures we have a SHA256 checksum and file size for every report.
-    """
-    return {
-        "file_metadata": {
-            "file_name": PurePosixPath(source_object).name,
-            "source_object_path": source_object,
-            "persistent_data_path": data_destination,
-            "file_size_bytes": len(raw_bytes),
-            "checksum_sha256": hashlib.sha256(raw_bytes).hexdigest(),
-            "content_type": "application/json",
-            "ingested_at_utc": datetime.now(UTC).isoformat(),
-        },
-        "content_metadata": {
-            "schema_type": "traffic_streaming_report",
-            "description": "Metadata for the aggregated JSON report from Kafka streaming"
-        }
-    }
-
 def process_semi_structured_object(client: Minio, move: ObjectMove):
     """
     Persist the original semi-structured JSON under data/ and generate a metadata JSON under metadata/.
@@ -535,7 +551,7 @@ def move_object(client: Minio, move: ObjectMove):
 def main():
     """
     Main process:
-    - structured CSVs -> process into Delta Lake
+    - structured CSVs -> convert into Delta Lake and upload resulting table
     - other supported files -> move to persistent landing
     """
 
@@ -561,25 +577,15 @@ def main():
 
             try:
                 if obj.is_structured_csv:
-                    process_csv_object(client, obj.source)
+                    process_structured_csv_object(client, obj.source)
                 elif obj.is_semi_structured_json:
                     process_semi_structured_object(client, obj)
                 elif obj.source.startswith(f"{config.LANDING_TEMPORAL_PATH}meta_unstructured_"):
-                    
                     process_unstructured_image_metadata_to_delta(client, obj.source)
-                    raw_bytes = download_object_bytes(client, obj.source)
-                    tech_meta_payload = build_unstructured_image_report_metadata(obj.source, obj.destination, raw_bytes)
-    
-                    tech_meta_path = obj.destination.replace("metadata/", "metadata/tech_")
-                    upload_json_bytes(client, tech_meta_path, json.dumps(tech_meta_payload, indent=2).encode("utf-8"))
-                    
-                    # 3. Mover y limpiar (Persistencia)
                     move_object(client, obj)
                 elif obj.is_unstructured_text:
-                    
                     process_unstructured_text_object(client, obj)
                 elif obj.is_unstructured_audio:
-                    
                     process_unstructured_audio_object(client, obj)
                 else:
                     move_object(client, obj)

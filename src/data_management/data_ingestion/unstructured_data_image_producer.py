@@ -24,9 +24,11 @@ def get_clean_camera_id(folder_name):
     return f"{parts[0]}_{parts[1]}" if len(parts) >= 2 else folder_name
 
 def on_send_error(excp):
+    """Log Kafka send failures for image messages."""
     print(f"KAFKA ERROR (Image discarded): {excp}")
 
 def run_producer():
+    """Stream image frames to Kafka in round-robin order."""
     try:
         producer = KafkaProducer(
             bootstrap_servers=[config.KAFKA_SERVER],
@@ -58,7 +60,7 @@ def run_producer():
             "timer": time.time(),
         }
 
-    print("STATUS: Producer initialized. Broadcasting channels via Round Robin...")
+    print("STATUS: Producer initialized. Broadcasting channels via Round Robin")
 
     active = True
     while active:

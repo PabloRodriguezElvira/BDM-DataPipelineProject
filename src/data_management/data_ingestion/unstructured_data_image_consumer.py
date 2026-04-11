@@ -4,6 +4,7 @@ import base64
 import time
 from datetime import datetime
 import io
+from pathlib import Path
 import pytz
 
 from kafka import KafkaConsumer
@@ -14,7 +15,9 @@ from src.common.minio_client import get_minio_client
 ny_timezone = pytz.timezone("America/New_York")
 
 def consume_and_aggregate():
-    os.makedirs(config.UNSTRUCTURED_IMAGE_BASE_DIR, exist_ok=True)
+    """Consume image frames, aggregate counts, and upload reports."""
+    base_dir = Path(config.UNSTRUCTURED_IMAGE_BASE_DIR)
+    base_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         consumer = KafkaConsumer(
@@ -63,14 +66,16 @@ def consume_and_aggregate():
                         buffer["frames"] += 1
 
                         # Create directory structure and persist image locally
-                        camera_path = os.path.join(config.UNSTRUCTURED_IMAGE_BASE_DIR, camera_id, today)
-                        os.makedirs(camera_path, exist_ok=True)
+                        camera_path = base_dir / camera_id / today
+                        camera_path.mkdir(parents=True, exist_ok=True)
 
                         image_filename = f"{time_str}_{frame_id}.jpg"
-                        full_image_path = os.path.join(camera_path, image_filename)
+                        full_image_path = camera_path / image_filename
 
-                        with open(full_image_path, "wb") as f:
-                            f.write(base64.b64decode(img_b64))
+                        try:
+                            full_image_path.write_bytes(base64.b64decode(img_b64))
+                        except PermissionError as exc:
+                            print(f"WARNING: Local image persistence skipped for {full_image_path} - {exc}")
 
                         for label, count in detections.items():
                             buffer["counts"][label] = buffer["counts"].get(label, 0) + count
@@ -95,10 +100,7 @@ def consume_and_aggregate():
                         start_dt = datetime.fromtimestamp(buffer["start"], tz=pytz.utc).astimezone(ny_timezone)
                         report_filename = f"meta_unstructured_report_{cid}_{start_dt.strftime('%H%M%S')}.json"
                         
-                        #cid_path = os.path.join(config.UNSTRUCTURED_IMAGE_BASE_DIR, cid, today)
-                        #os.makedirs(cid_path, exist_ok=True)
-                        #local_report_path = os.path.join(cid_path, report_filename)
-
+                
                         report = {
                             "camera_id": cid,
                             "date": today,

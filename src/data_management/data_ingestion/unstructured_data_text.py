@@ -24,6 +24,7 @@ from src.common.progress_bar import ProgressBar
 
 
 def _configure_kagglehub_token():
+    """Load Kaggle credentials into the environment."""
     load_env_file(".env")
 
     token = os.getenv("KAGGLE_API_TOKEN") or os.getenv("kaggle_api_token") or ""
@@ -31,6 +32,7 @@ def _configure_kagglehub_token():
 
 
 def _download_dataset_to_cache() -> Path:
+    """Download the Kaggle text dataset into the local cache."""
     _configure_kagglehub_token()
 
     import kagglehub
@@ -44,6 +46,7 @@ def _download_dataset_to_cache() -> Path:
 
 
 def _format_article_text(article: dict) -> str:
+    """Render one article as plain text lines."""
     headline = str(article.get("headline", "") or "").strip()
     category = str(article.get("category", "") or "").strip()
     authors = str(article.get("authors", "") or "").strip()
@@ -65,6 +68,7 @@ def _write_article_txt(
     article: dict,
     article_index: int,
 ) -> bool:
+    """Write one article to its target text file."""
     output_path = config.UNSTRUCTURED_TEXT_OUT_DIR / f"{article_index:06d}.txt"
 
     if output_path.exists():
@@ -78,6 +82,7 @@ def _split_json_to_txt(
     source_path: Path,
     max_files: Optional[int],
 ) -> tuple[int, bool]:
+    """Expand a JSON lines file into individual text files."""
     converted = 0
     processed = 0
     reached_limit = False
@@ -118,6 +123,7 @@ def _split_json_to_txt(
 
 
 def _delete_json_if_needed(source_path: Path, completed_full_file: bool):
+    """Remove a processed JSON source when it is fully consumed."""
     if not completed_full_file:
         return
 
@@ -133,6 +139,7 @@ def _process_json_sources(
     json_files: list[Path],
     max_files: Optional[int],
 ) -> int:
+    """Process JSON sources until the requested limit is reached."""
     total_converted = 0
 
     for source_path in json_files:
@@ -157,6 +164,7 @@ def _copy_plain_text_files(
     text_files: list[Path],
     max_files: Optional[int],
 ) -> int:
+    """Copy existing plain text files into the output folder."""
     copied = 0
 
     with ProgressBar(
@@ -186,6 +194,7 @@ def _copy_plain_text_files(
 def download_text_from_kaggle(
     max_files: Optional[int],
 ):
+    """Prepare the text dataset locally from Kaggle sources."""
     config.UNSTRUCTURED_TEXT_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     local_json_files = sorted(
@@ -236,6 +245,7 @@ def download_text_from_kaggle(
 
 
 def parse_args():
+    """Parse CLI arguments for text ingestion."""
     parser = argparse.ArgumentParser(
         description="Download unstructured text data from Kaggle and expand JSON entries into .txt files."
     )

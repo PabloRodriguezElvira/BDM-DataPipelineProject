@@ -23,6 +23,7 @@ from src.common.progress_bar import ProgressBar
 
 
 def _configure_kagglehub_token():
+    """Load Kaggle credentials into the environment."""
     load_env_file(".env")
 
     token = os.getenv("KAGGLE_API_TOKEN") or os.getenv("kaggle_api_token") or ""
@@ -30,6 +31,7 @@ def _configure_kagglehub_token():
 
 
 def _download_dataset_to_cache() -> Path:
+    """Download the Kaggle audio dataset into the local cache."""
     _configure_kagglehub_token()
 
     import kagglehub
@@ -45,6 +47,7 @@ def _download_dataset_to_cache() -> Path:
 def download_audio_from_kaggle(
     max_files: Optional[int],
 ):
+    """Copy audio files from the Kaggle cache into the project folder."""
     config.UNSTRUCTURED_AUDIO_OUT_DIR.mkdir(parents=True, exist_ok=True)
     dataset_path = _download_dataset_to_cache()
 
@@ -81,6 +84,7 @@ def download_audio_from_kaggle(
 
 
 def parse_args():
+    """Parse CLI arguments for audio ingestion."""
     parser = argparse.ArgumentParser(
         description="Download unstructured audio files from Kaggle."
     )

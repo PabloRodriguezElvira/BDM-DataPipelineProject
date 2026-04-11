@@ -27,54 +27,54 @@ with DAG(
     tags=config.AIRFLOW_BATCH_TAGS,
     params={
         "structured_limit": Param(
-            config.AIRFLOW_STRUCTURED_LIMIT,
+            100,
             type="integer",
             minimum=1,
             title="Structured limit",
-            description="Maximum number of structured rows/items to ingest",
+            description="Maximum number of rows per CSV file to ingest.",
         ),
         "structured_max_csvs": Param(
-            config.AIRFLOW_STRUCTURED_MAX_CSVS,
+            50,
             type="integer",
             minimum=1,
             title="Structured max CSVs",
-            description="Maximum number of CSV files to ingest",
+            description="Maximum number of CSV files to ingest.",
         ),
         "semi_structured_max_locations": Param(
-            config.AIRFLOW_SEMI_STRUCTURED_MAX_LOCATIONS,
+            5,
             type="integer",
             minimum=1,
             title="Semi-structured max locations",
-            description="Maximum number of locations to query",
+            description="Maximum number of locations to query.",
         ),
         "semi_structured_no_hourly": Param(
-            config.AIRFLOW_SEMI_STRUCTURED_NO_HOURLY,
+            False,
             type="boolean",
             title="Daily forecasts",
             description="Set to true to request daily forecasts, or false to request hourly forecasts.",
         ),
         "unstructured_text_max_files": Param(
-            config.AIRFLOW_UNSTRUCTURED_TEXT_MAX_FILES,
+            50,
             type="integer",
             minimum=1,
             title="Unstructured text max files",
-            description="Maximum number of text files to ingest",
+            description="Maximum number of text files to ingest.",
         ),
         "unstructured_audio_max_files": Param(
-            config.AIRFLOW_UNSTRUCTURED_AUDIO_MAX_FILES,
+            50,
             type="integer",
             minimum=1,
             title="Unstructured audio max files",
-            description="Maximum number of audio files to ingest",
+            description="Maximum number of audio files to ingest.",
         ),
         "upload_to_temporal_only": Param(
-            config.AIRFLOW_UPLOAD_TO_TEMPORAL_ONLY,
+            "all",
             type="string",
             title="Upload dataset type",
             description="Dataset type to upload to temporal landing: all, structured, semi_structured, unstructured_audio or unstructured_text.",
         ),
         "upload_to_temporal_max_files": Param(
-            config.AIRFLOW_UPLOAD_TO_TEMPORAL_MAX_FILES,
+            100,
             type="integer",
             minimum=1,
             title="Upload max files",
@@ -99,8 +99,8 @@ with DAG(
             bash_command=(
                 f"cd {config.PROJECT_ROOT} && "
                 f"{config.PYTHON_BIN} -m src.data_management.data_ingestion.semi_structured_data "
-                "--max-locations {{ params.semi_structured_max_locations }}"
-                "--no-hourly {{ params.semi_structured_no_hourly }} "
+                "--max-locations {{ params.semi_structured_max_locations }} "
+                "{% if params.semi_structured_no_hourly %}--no-hourly{% endif %}"
             ),
         )
 
@@ -164,7 +164,7 @@ with DAG(
     tags=config.AIRFLOW_STREAMING_TAGS,
     params={
         "streaming_timeout_seconds": Param(
-            config.AIRFLOW_STREAMING_TIMEOUT_SECONDS,
+            120,
             type="integer",
             minimum=1,
             title="Streaming timeout seconds",

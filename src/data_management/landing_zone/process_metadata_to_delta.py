@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pyarrow as pa
 from deltalake.writer import write_deltalake
 from minio import Minio
 
@@ -39,6 +40,13 @@ def _flatten_metadata_payload(payload: dict, prefix: str = "") -> dict:
             flat_row[flat_key] = value
 
     return flat_row
+
+
+def _dataframe_to_arrow_table(df: pd.DataFrame) -> pa.Table:
+    """
+    Convert pandas DataFrame to a PyArrow table compatible with deltalake writes.
+    """
+    return pa.Table.from_pandas(df, preserve_index=False)
 
 
 def process_unstructured_image_metadata_to_delta(client: Minio, object_name: str):
@@ -84,7 +92,7 @@ def process_unstructured_image_metadata_to_delta(client: Minio, object_name: str
     # 'mode=append' adds new rows, 'schema_mode=merge' allows for new columns
     write_deltalake(
         uri, 
-        df, 
+        _dataframe_to_arrow_table(df), 
         mode="append", 
         schema_mode="merge",
         storage_options=_get_storage_options(),
@@ -108,7 +116,7 @@ def process_metadata_to_delta(metadata_payload: dict, delta_folder: str):
     # Write to Delta Lake using Schema Evolution (schema_mode="merge")
     write_deltalake(
         uri, 
-        df, 
+        _dataframe_to_arrow_table(df), 
         mode="append", 
         schema_mode="merge",
         storage_options=_get_storage_options(),

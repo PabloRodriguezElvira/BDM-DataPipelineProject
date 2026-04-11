@@ -111,6 +111,9 @@ services:
         requests
         kagglehub
         psycopg2-binary
+        pandas
+        pyarrow
+        deltalake
     volumes:
       - .:/app
       - ./dags:/opt/airflow/dags
@@ -162,6 +165,9 @@ services:
         requests
         kagglehub
         psycopg2-binary
+        pandas
+        pyarrow
+        deltalake
 
         
     volumes:
@@ -178,7 +184,10 @@ services:
         condition: service_started
       airflow-init:
         condition: service_completed_successfully
-    command: webserver
+    command:
+      - bash
+      - -c
+      - rm -f /opt/airflow/airflow-webserver.pid && exec airflow webserver
     ports:
       - "8080:8080"
 
@@ -206,6 +215,9 @@ services:
         requests
         kagglehub
         psycopg2-binary
+        pandas
+        pyarrow
+        deltalake
     volumes:
       - .:/app
       - ./dags:/opt/airflow/dags

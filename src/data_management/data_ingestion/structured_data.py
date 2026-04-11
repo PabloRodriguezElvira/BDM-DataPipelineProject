@@ -78,7 +78,7 @@ def download_full_dataset_in_parts(
             response = requests.get(
                 config.STRUCTURED_API_URL,
                 params=params,
-                timeout=config.STRUCTURED_REQUEST_TIMEOUT_SECONDS,
+                timeout=config.REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
 

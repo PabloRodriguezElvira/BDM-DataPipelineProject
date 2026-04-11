@@ -1,12 +1,10 @@
 import io
 
 import pandas as pd
+import pyarrow as pa
 from deltalake.writer import write_deltalake
 from minio import Minio
-from minio.error import S3Error
 
-from src.common.minio_client import get_minio_client
-from src.common.progress_bar import ProgressBar
 import src.common.global_variables as config
 
 
@@ -83,9 +81,11 @@ def write_dataframe_to_delta(df: pd.DataFrame):
     """
     Append DataFrame to Delta table in persistent landing.
     """
+    arrow_table = pa.Table.from_pandas(df, preserve_index=False)
+
     write_deltalake(
         get_delta_table_uri(),
-        df,
+        arrow_table,
         mode="append",
         storage_options=get_storage_options(),
     )

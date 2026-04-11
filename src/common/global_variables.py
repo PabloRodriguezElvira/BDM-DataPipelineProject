@@ -65,24 +65,6 @@ AIRFLOW_STREAMING_CATCHUP = False
 AIRFLOW_STREAMING_MAX_ACTIVE_RUNS = 1
 AIRFLOW_STREAMING_TAGS = ["bdm", "streaming", "kafka"]
 
-# structured_data.py parameters
-AIRFLOW_STRUCTURED_LIMIT = 50000
-AIRFLOW_STRUCTURED_MAX_CSVS = 5
-
-# semi_structured_data.py parameters
-AIRFLOW_SEMI_STRUCTURED_MAX_LOCATIONS = 5
-AIRFLOW_SEMI_STRUCTURED_NO_HOURLY = False
-
-# unstructured parameters
-AIRFLOW_UNSTRUCTURED_TEXT_MAX_FILES = 100
-AIRFLOW_UNSTRUCTURED_AUDIO_MAX_FILES = 50
-
-# upload_to_temporal.py parameters
-AIRFLOW_UPLOAD_TO_TEMPORAL_ONLY = "all"
-AIRFLOW_UPLOAD_TO_TEMPORAL_MAX_FILES = 100
-
-# kafka parameters
-AIRFLOW_STREAMING_TIMEOUT_SECONDS = 120
 
 # ------------- Semi-structured ingestion -------------
 POINTS_URL = "https://api.weather.gov/points/{lat},{lon}"

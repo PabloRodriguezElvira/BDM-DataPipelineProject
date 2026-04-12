@@ -5,7 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: bdm-app
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: admin
@@ -32,6 +33,29 @@ services:
     volumes:
       - ./data_MinIO:/data
     command: server /data --console-address ":9090"
+
+  minio-bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: minio-bootstrap
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: admin123
+      MINIO_SECURE: "false"
+      PROJECT_ROOT: /app
+      PYTHON_BIN: python
+      PYTHONPATH: /app
+    volumes:
+      - .:/app
+    depends_on:
+      - minio
+    command: python -m src.common.minio_manager
+    restart: "no"
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -91,7 +115,8 @@ services:
     image: apache/airflow:2.9.1
     container_name: airflow-init
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
@@ -124,6 +149,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      minio-bootstrap:
+        condition: service_completed_successfully
       kafka:
         condition: service_started
     entrypoint: /bin/bash
@@ -144,7 +171,8 @@ services:
     image: apache/airflow:2.9.1
     container_name: airflow-webserver
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
@@ -180,6 +208,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      minio-bootstrap:
+        condition: service_completed_successfully
       kafka:
         condition: service_started
       airflow-init:
@@ -195,7 +225,8 @@ services:
     image: apache/airflow:2.9.1
     container_name: airflow-scheduler
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
@@ -228,6 +259,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      minio-bootstrap:
+        condition: service_completed_successfully
       kafka:
         condition: service_started
       airflow-init:

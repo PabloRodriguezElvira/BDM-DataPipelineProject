@@ -36,6 +36,7 @@ docker compose up --build -d
 ```
 
 This builds the Docker image and installs the dependencies from `requirements.txt`.
+During startup, `minio_manager.py` is executed automatically to create the MinIO landing bucket.
 
 Main services:
 
@@ -116,6 +117,6 @@ python -m src.data_management.landing_zone.upload_to_temporal --help
 
 - `structured_to_delta.py` converts structured CSV data before it is written as Delta Lake
 - `landing_zone.py` is responsible for persisting processed data into MinIO
-- Some ingestion scripts may require credentials in `.env`, especially Kaggle-based ones
+- `.env` is optional for `docker compose up`; it is only needed for ingestion flows that require credentials, especially Kaggle-based ones
 - For the Kafka image streaming workflow, a small test dataset will be provided in `downloaded_data/unstructured/images` with 11 folders and around 30 images per folder
 - If the full image dataset is needed, it can be downloaded from: `https://github.com/Math-ML-X/TrafficCAM/blob/main/TrafficCAM-download.md`

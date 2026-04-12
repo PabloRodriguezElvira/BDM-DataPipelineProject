@@ -1,11 +1,36 @@
+import time
 from io import BytesIO
+
 from minio import Minio
 from minio.error import S3Error
-from src.common.minio_client import get_minio_client
-import src.common.global_variables as config
 
-# Localhost MinIO client
+import src.common.global_variables as config
+from src.common.minio_client import get_minio_client
+
+MAX_CONNECTION_ATTEMPTS = 30
+RETRY_DELAY_SECONDS = 2
+
+
 client = get_minio_client()
+
+
+def wait_for_minio():
+    """
+    Wait until MinIO is reachable before trying to create buckets.
+    """
+    for attempt in range(1, MAX_CONNECTION_ATTEMPTS + 1):
+        try:
+            client.list_buckets()
+            return
+        except Exception as exc:
+            if attempt == MAX_CONNECTION_ATTEMPTS:
+                raise RuntimeError(
+                    "MinIO was not reachable after multiple retries."
+                ) from exc
+            print(
+                f"Waiting for MinIO ({attempt}/{MAX_CONNECTION_ATTEMPTS})..."
+            )
+            time.sleep(RETRY_DELAY_SECONDS)
 
 def create_bucket(bucket: str):
     """
@@ -39,6 +64,7 @@ def main():
     """
     Creates the buckets with all their sub buckets
     """
+    wait_for_minio()
 
     # Create landing bucket
     create_bucket(config.LANDING_BUCKET)

@@ -35,8 +35,9 @@ Start the full environment with:
 docker compose up --build -d
 ```
 
-This builds the Docker image and installs the dependencies from `requirements.txt`.
+This builds the project app image from `requirements.txt` and a dedicated Airflow image from `requirements.txt` plus `requirements-airflow.txt`.
 During startup, `minio_manager.py` is executed automatically to create the MinIO landing bucket.
+Airflow dependencies are installed at image build time instead of being injected with `_PIP_ADDITIONAL_REQUIREMENTS` at container startup.
 
 Main services:
 
@@ -118,5 +119,8 @@ python -m src.data_management.landing_zone.upload_to_temporal --help
 - `structured_to_delta.py` converts structured CSV data before it is written as Delta Lake
 - `landing_zone.py` is responsible for persisting processed data into MinIO
 - `.env` is optional for `docker compose up`; it is only needed for ingestion flows that require credentials, especially Kaggle-based ones
+- Shared runtime dependencies live in `requirements.txt`
+- Airflow-only dependencies live in `requirements-airflow.txt`
+- If you add MongoDB, ClickHouse, Milvus or similar connectors used by your project code, add them to `requirements.txt` so both the app container and the Airflow containers receive them
 - For the Kafka image streaming workflow, a small test dataset will be provided in `downloaded_data/unstructured/images` with 11 folders and around 30 images per folder
 - If the full image dataset is needed, it can be downloaded from: `https://github.com/Math-ML-X/TrafficCAM/blob/main/TrafficCAM-download.md`

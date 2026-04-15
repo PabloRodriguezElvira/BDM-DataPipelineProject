@@ -1,20 +1,46 @@
+x-project-env: &project-env
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: admin
+  MINIO_SECRET_KEY: admin123
+  MINIO_SECURE: "false"
+  PROJECT_ROOT: /app
+  PYTHON_BIN: python
+  PYTHONPATH: /app
+
+x-optional-env-file: &optional-env-file
+  - path: .env
+    required: false
+
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+
+x-airflow-build: &airflow-build
+  context: .
+  dockerfile: Dockerfile.airflow
+
+x-airflow-env: &airflow-env
+  <<: *project-env
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+  AIRFLOW__WEBSERVER__SECRET_KEY: airflow_secret_key
+
+x-airflow-volumes: &airflow-volumes
+  - .:/app
+  - ./dags:/opt/airflow/dags
+  - airflow_logs:/opt/airflow/logs
+  - airflow_plugins:/opt/airflow/plugins
+
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: bdm-app:latest
+    build: *app-build
     container_name: bdm-app
-    env_file:
-      - path: .env
-        required: false
+    env_file: *optional-env-file
     environment:
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
-      MINIO_SECURE: "false"
-      PROJECT_ROOT: /app
-      PYTHON_BIN: python
-      PYTHONPATH: /app
+      <<: *project-env
     volumes:
       - .:/app
     depends_on:
@@ -35,21 +61,12 @@ services:
     command: server /data --console-address ":9090"
 
   minio-bootstrap:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: bdm-app:latest
+    build: *app-build
     container_name: minio-bootstrap
-    env_file:
-      - path: .env
-        required: false
+    env_file: *optional-env-file
     environment:
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
-      MINIO_SECURE: "false"
-      PROJECT_ROOT: /app
-      PYTHON_BIN: python
-      PYTHONPATH: /app
+      <<: *project-env
     volumes:
       - .:/app
     depends_on:
@@ -112,38 +129,13 @@ services:
       - postgres_db:/var/lib/postgresql/data
 
   airflow-init:
-    image: apache/airflow:2.9.1
+    image: bdm-airflow:2.9.1
+    build: *airflow-build
     container_name: airflow-init
-    env_file:
-      - path: .env
-        required: false
+    env_file: *optional-env-file
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__WEBSERVER__SECRET_KEY: airflow_secret_key
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
-      MINIO_SECURE: "false"
-      PROJECT_ROOT: /app
-      PYTHON_BIN: python
-      PYTHONPATH: /app
-      _PIP_ADDITIONAL_REQUIREMENTS: >-
-        minio
-        kafka-python
-        requests
-        kagglehub
-        psycopg2-binary
-        pandas
-        pyarrow
-        deltalake
-    volumes:
-      - .:/app
-      - ./dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
-      - airflow_plugins:/opt/airflow/plugins
+      <<: *airflow-env
+    volumes: *airflow-volumes
     depends_on:
       postgres:
         condition: service_healthy
@@ -168,41 +160,14 @@ services:
     restart: "no"
 
   airflow-webserver:
-    image: apache/airflow:2.9.1
+    image: bdm-airflow:2.9.1
+    build: *airflow-build
     container_name: airflow-webserver
-    env_file:
-      - path: .env
-        required: false
+    env_file: *optional-env-file
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      <<: *airflow-env
       AIRFLOW__CORE__DAG_RUN_CONF_OVERRIDES_PARAMS: "true"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__WEBSERVER__SECRET_KEY: airflow_secret_key
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
-      MINIO_SECURE: "false"
-      PROJECT_ROOT: /app
-      PYTHON_BIN: python
-      PYTHONPATH: /app
-      _PIP_ADDITIONAL_REQUIREMENTS: >-
-        minio
-        kafka-python
-        requests
-        kagglehub
-        psycopg2-binary
-        pandas
-        pyarrow
-        deltalake
-
-        
-    volumes:
-      - .:/app
-      - ./dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
-      - airflow_plugins:/opt/airflow/plugins
+    volumes: *airflow-volumes
     depends_on:
       postgres:
         condition: service_healthy
@@ -222,38 +187,13 @@ services:
       - "8080:8080"
 
   airflow-scheduler:
-    image: apache/airflow:2.9.1
+    image: bdm-airflow:2.9.1
+    build: *airflow-build
     container_name: airflow-scheduler
-    env_file:
-      - path: .env
-        required: false
+    env_file: *optional-env-file
     environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__WEBSERVER__SECRET_KEY: airflow_secret_key
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
-      MINIO_SECURE: "false"
-      PROJECT_ROOT: /app
-      PYTHON_BIN: python
-      PYTHONPATH: /app
-      _PIP_ADDITIONAL_REQUIREMENTS: >-
-        minio
-        kafka-python
-        requests
-        kagglehub
-        psycopg2-binary
-        pandas
-        pyarrow
-        deltalake
-    volumes:
-      - .:/app
-      - ./dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
-      - airflow_plugins:/opt/airflow/plugins
+      <<: *airflow-env
+    volumes: *airflow-volumes
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,0 +1,11 @@
+FROM apache/airflow:2.9.1
+
+WORKDIR /app
+
+COPY requirements.txt /tmp/requirements.txt
+COPY requirements-airflow.txt /tmp/requirements-airflow.txt
+
+RUN PYTHON_MAJOR_MINOR="$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")" && \
+    pip install --no-cache-dir \
+      --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.1/constraints-${PYTHON_MAJOR_MINOR}.txt" \
+      -r /tmp/requirements-airflow.txt

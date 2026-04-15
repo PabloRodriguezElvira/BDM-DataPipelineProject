@@ -2,14 +2,16 @@ from datetime import datetime
 import os
 from pathlib import Path
 
-# ------------- Bucket names -------------
+# -------------------------- BUCKET NAMES --------------------------
 LANDING_BUCKET = "landing-zone"
 
-# ------------- Paths for each zone -------------
+
+# -------------------------- PATHS FOR EACH ZONE --------------------------
 LANDING_TEMPORAL_PATH = "temporal_landing/"
 LANDING_PERSISTENT_PATH = "persistent_landing/"
 
-# ------------- MinIO connection -------------
+
+# -------------------------- MINIO CONNECTION --------------------------
 _minio_endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9000").strip()
 _minio_secure = os.getenv("MINIO_SECURE", "false").strip().lower() in {
     "1", "true", "yes", "on"
@@ -34,11 +36,12 @@ MINIO_ROOT_PASSWORD = os.getenv(
 MINIO_ACCESS_KEY = MINIO_ROOT_USER
 MINIO_SECRET_KEY = MINIO_ROOT_PASSWORD
 
-# ------------- Kafka -------------
+
+# -------------------------- APACHE KAFKA --------------------------
 KAFKA_SERVER = "kafka:29092"
 
 
-# ------------- Airflow / orchestration -------------
+# -------------------------- AIRFLOW (ORCHESTRATION) --------------------------
 PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/app")
 PYTHON_BIN = os.getenv("PYTHON_BIN", "python")
 
@@ -47,17 +50,17 @@ AIRFLOW_DEFAULT_DEPENDS_ON_PAST = False
 AIRFLOW_DEFAULT_RETRIES = 2
 AIRFLOW_DEFAULT_RETRY_DELAY_MINUTES = 5
 
-# Pipeline Node Info
-AIRFLOW_BATCH_DAG_ID = "bdm_batch_pipeline"
-AIRFLOW_BATCH_DESCRIPTION = "Batch orchestration for ingestion and landing zone"
-AIRFLOW_BATCH_START_DATE = datetime(2026, 4, 10)
-AIRFLOW_BATCH_SCHEDULE = "0 2 * * *"
-AIRFLOW_BATCH_CATCHUP = False
-AIRFLOW_BATCH_MAX_ACTIVE_RUNS = 1
-AIRFLOW_BATCH_TAGS = ["bdm", "ingestion", "landing-zone"]
+# Data ingestion + Landing Zone
+AIRFLOW_LZ_DAG_ID = "data_ingestion_landing_zone"
+AIRFLOW_LZ_DESCRIPTION = "Batch orchestration for ingestion and landing zone"
+AIRFLOW_LZ_START_DATE = datetime(2026, 4, 10)
+AIRFLOW_LZ_SCHEDULE = None
+AIRFLOW_LZ_CATCHUP = False
+AIRFLOW_LZ_MAX_ACTIVE_RUNS = 1
+AIRFLOW_LZ_TAGS = ["bdm", "ingestion", "landing-zone"]
 
-# Kafka Node Info
-AIRFLOW_STREAMING_DAG_ID = "bdm_streaming_bootstrap"
+# Kafka Streaming
+AIRFLOW_STREAMING_DAG_ID = "apache_kafka_streaming"
 AIRFLOW_STREAMING_DESCRIPTION = "Manual bootstrap for Kafka producer/consumer of the image stream"
 AIRFLOW_STREAMING_START_DATE = datetime(2026, 4, 10)
 AIRFLOW_STREAMING_SCHEDULE = None
@@ -66,7 +69,13 @@ AIRFLOW_STREAMING_MAX_ACTIVE_RUNS = 1
 AIRFLOW_STREAMING_TAGS = ["bdm", "streaming", "kafka"]
 
 
-# ------------- Semi-structured ingestion -------------
+# -------------------------- STRUCTURED INGESTION --------------------------
+STRUCTURED_API_URL = "https://data.cityofnewyork.us/resource/h9gi-nx95.csv"
+STRUCTURED_DEFAULT_LIMIT = 50_000
+STRUCTURED_OUT_DIR = Path("downloaded_data/structured")
+
+
+# -------------------------- SEMI-STRUCTURED INGESTION --------------------------
 POINTS_URL = "https://api.weather.gov/points/{lat},{lon}"
 FORECAST_URL = "https://api.weather.gov/gridpoints/{office}/{grid_x},{grid_y}/{endpoint}"
 SEMI_STRUCTURED_OUT_DIR = Path("downloaded_data/semi_structured")
@@ -100,29 +109,28 @@ NYC_LOCATIONS = [
     {"name": "tottenville", "lat": 40.5120, "lon": -74.2518},
 ]
 
-# ------------- Structured ingestion -------------
-STRUCTURED_API_URL = "https://data.cityofnewyork.us/resource/h9gi-nx95.csv"
-STRUCTURED_DEFAULT_LIMIT = 50_000
-STRUCTURED_OUT_DIR = Path("downloaded_data/structured")
 
-# ------------- Unstructured audio ingestion -------------
+# -------------------------- UNSTRUCTURED AUDIO INGESTION --------------------------
 UNSTRUCTURED_AUDIO_DATASET = "louisteitelbaum/911-recordings-first-6-seconds"
 UNSTRUCTURED_AUDIO_OUT_DIR = Path("downloaded_data/unstructured/audio")
 UNSTRUCTURED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
 
-# ------------- Unstructured image consumer -------------
+
+# -------------------------- UNSTRUCTURED IMAGE CONSUMER --------------------------
 UNSTRUCTURED_IMAGE_BASE_DIR = "downloaded_data/unstructured/real_time_images"
 UNSTRUCTURED_IMAGE_TOPIC_NAME = "traffic-images"
 UNSTRUCTURED_IMAGE_WINDOW_SECONDS = 15
 UNSTRUCTURED_IMAGE_LOG_INTERVAL = 15
 
-# ------------- Unstructured image producer -------------
+
+# -------------------------- UNSTRUCTURED IMAGE PRODUCER --------------------------
 UNSTRUCTURED_IMAGE_SOURCE_DATA_PATH = Path("downloaded_data/unstructured/images")
 UNSTRUCTURED_IMAGE_BATCH_SIZE = 5
 UNSTRUCTURED_IMAGE_TRAFFIC_UPDATE_SECONDS = 10
 UNSTRUCTURED_IMAGE_SLEEP_SECONDS = 0.01
 
-# ------------- Unstructured text ingestion -------------
+
+# -------------------------- UNSTRUCTURED TEXT INGESTION --------------------------
 UNSTRUCTURED_TEXT_DATASET = "rmisra/news-category-dataset"
 UNSTRUCTURED_TEXT_OUT_DIR = Path("downloaded_data/unstructured/text")
 UNSTRUCTURED_TEXT_JSON_EXTENSIONS = {".json", ".jsonl", ".ndjson"}

@@ -65,7 +65,7 @@ python -m src.data_management.data_ingestion.structured_data
 The project can be executed in two ways:
 
 - From the terminal, by running the Python modules directly
-- From Airflow, using the DAGs defined in `dags/orchestrator.py`
+- From Airflow, using the DAGs defined in `dags/`
 
 Airflow includes:
 

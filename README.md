@@ -2,7 +2,7 @@
 
 ## Description
 
-This project implements a landing zone pipeline for a small data platform. It ingests structured, semi-structured, and unstructured datasets, uploads them to a temporal area in MinIO, and then processes them into a persistent area. During this process, the project also generates Delta Lake tables for structured data and metadata.
+This project implements a landing zone pipeline for a small data platform. It ingests structured, semi-structured, and unstructured datasets, uploads them to a temporal area in MinIO, and then processes them into a persistent area. During this flow, it also generates Delta Lake tables for structured data and metadata.
 
 The platform includes:
 
@@ -27,9 +27,9 @@ The platform includes:
 - Unstructured text: text-based news data
 - Unstructured images: Kafka streaming flow
 
-## Run With Docker
+## Run Docker environment
 
-Start the full environment with:
+Start the Docker environment with:
 
 ```bash
 docker compose up --build -d
@@ -37,24 +37,39 @@ docker compose up --build -d
 
 This builds the project app image from `requirements.txt` and a dedicated Airflow image from `requirements.txt` plus `requirements-airflow.txt`.
 During startup, `minio_manager.py` is executed automatically to create the MinIO landing bucket.
-Airflow dependencies are installed at image build time instead of being injected with `_PIP_ADDITIONAL_REQUIREMENTS` at container startup.
 
 Main services:
 
-- Airflow: `http://localhost:8080`
-- MinIO API: `http://localhost:9000`
+- Apache Airflow: `http://localhost:8080`
+  Username: `admin`
+  Password: `admin`
 - MinIO Console: `http://localhost:9090`
-- Kafka UI: `http://localhost:8081`
+  Username: `admin`
+  Password: `admin123`
+- MinIO API: `http://localhost:9000`
+- Apache Kafka UI: `http://localhost:8081`
 
-## Run With Python
+To run any project module inside the `app` container, use:
 
-Install dependencies:
+```bash
+docker compose exec app python -m <package.module> [--flag value ...]
+```
+
+Example:
+
+```bash
+docker compose exec app python -m src.data_management.data_ingestion.structured_data --limit 50000 --max-csvs 5
+```
+
+## Run Python scripts locally
+
+Install dependencies locally on your machine:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Example command:
+Example command to execute the structured data ingestion:
 
 ```bash
 python -m src.data_management.data_ingestion.structured_data
@@ -64,23 +79,14 @@ python -m src.data_management.data_ingestion.structured_data
 
 The project can be executed in two ways:
 
-- From the terminal, by running the Python modules directly
+- From the terminal, by running the Python modules directly with a local Python interpreter or inside the Docker `app` container.
 - From Airflow, using the DAGs defined in `dags/`
 
 Airflow includes:
 
-- `bdm_batch_pipeline` for batch ingestion and landing zone processing
-- `bdm_streaming_bootstrap` for the streaming image flow
+- `data_ingestion_landing_zone` for batch ingestion and landing zone processing
+- `apache_kafka_streaming` for the streaming image flow
 
-Default Airflow credentials:
-
-- Username: `admin`
-- Password: `admin`
-
-Default MinIO credentials:
-
-- Username: `admin`
-- Password: `admin123`
 
 ## Common Commands
 
@@ -116,11 +122,10 @@ python -m src.data_management.landing_zone.upload_to_temporal --help
 
 ## Notes
 
-- `structured_to_delta.py` converts structured CSV data before it is written as Delta Lake
+- `structured_csv_to_arrow.py` converts structured CSV data before it is written as Delta Lake
 - `landing_zone.py` is responsible for persisting processed data into MinIO
 - `.env` is optional for `docker compose up`; it is only needed for ingestion flows that require credentials, especially Kaggle-based ones
 - Shared runtime dependencies live in `requirements.txt`
 - Airflow-only dependencies live in `requirements-airflow.txt`
-- If you add MongoDB, ClickHouse, Milvus or similar connectors used by your project code, add them to `requirements.txt` so both the app container and the Airflow containers receive them
 - For the Kafka image streaming workflow, a small test dataset will be provided in `downloaded_data/unstructured/images` with 11 folders and around 30 images per folder
 - If the full image dataset is needed, it can be downloaded from: `https://github.com/Math-ML-X/TrafficCAM/blob/main/TrafficCAM-download.md`

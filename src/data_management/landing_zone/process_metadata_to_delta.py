@@ -95,6 +95,7 @@ def process_unstructured_image_metadata_to_delta(client: Minio, object_name: str
         _dataframe_to_arrow_table(df), 
         mode="append", 
         schema_mode="merge",
+        engine="rust",
         storage_options=_get_storage_options(),
     )
     
@@ -119,6 +120,7 @@ def process_metadata_to_delta(metadata_payload: dict, delta_folder: str):
         _dataframe_to_arrow_table(df), 
         mode="append", 
         schema_mode="merge",
+        engine="rust",
         storage_options=_get_storage_options(),
     )
     print(f"[DELTA SUCCESS] Metadata integrated into table at: {delta_folder}")

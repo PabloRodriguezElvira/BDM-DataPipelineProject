@@ -59,7 +59,7 @@ def dataframe_to_arrow_table(df: pd.DataFrame) -> pa.Table:
     return pa.Table.from_pandas(df, preserve_index=False)
 
 
-def process_csv_object(client: Minio, object_name: str) -> pa.Table | None:
+def csv_to_arrow(client: Minio, object_name: str) -> pa.Table | None:
     """
     Convert one temporal CSV into an Arrow Table ready to be written as Delta.
     """

@@ -16,7 +16,7 @@ from src.common.minio_client import get_minio_client
 from src.common.progress_bar import ProgressBar
 import src.common.global_variables as config
 
-from src.data_management.landing_zone.structured_to_delta import process_csv_object
+from src.data_management.landing_zone.structured_csv_to_arrow import csv_to_arrow
 from src.data_management.landing_zone.process_metadata_to_delta import process_unstructured_image_metadata_to_delta, process_metadata_to_delta
 
 
@@ -152,7 +152,7 @@ def process_structured_csv_object(client: Minio, object_name: str):
     """
     Convert a temporal CSV and persist it into the structured Delta table in MinIO.
     """
-    arrow_table = process_csv_object(client, object_name)
+    arrow_table = csv_to_arrow(client, object_name)
     if arrow_table is None:
         client.remove_object(config.LANDING_BUCKET, object_name)
         return
@@ -162,6 +162,7 @@ def process_structured_csv_object(client: Minio, object_name: str):
         arrow_table,
         mode="append",
         schema_mode="merge",
+        engine="rust",
         storage_options=get_delta_storage_options(),
     )
     client.remove_object(config.LANDING_BUCKET, object_name)

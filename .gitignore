@@ -19,3 +19,6 @@ downloaded_data/
 
 # Real time images coming from kafka 
 **/real_time_images/
+
+# Claude
+CLAUDE.md

@@ -1,5 +1,6 @@
 import time
 from io import BytesIO
+from typing import Optional
 
 from minio import Minio
 from minio.error import S3Error
@@ -59,6 +60,37 @@ def create_folder(bucket: str, folder: str):
         content_type="application/octet-stream",
     )
 
+def list_objects(bucket: str, prefix: str) -> list[str]:
+    """Return all object names under prefix in bucket."""
+    return [
+        obj.object_name
+        for obj in client.list_objects(bucket, prefix=prefix, recursive=True)
+        if not obj.object_name.endswith("/")
+    ]
+
+
+def read_object_bytes(bucket: str, key: str) -> Optional[bytes]:
+    """Download key from bucket and return its raw bytes, or None on error."""
+    try:
+        response = client.get_object(bucket, key)
+        data = response.read()
+        response.close()
+        response.release_conn()
+        return data
+    except Exception as exc:
+        print(f"[WARN] Could not read {key}: {exc}")
+        return None
+
+
+def write_object_bytes(bucket: str, key: str, data: bytes, content_type: str = "application/octet-stream"):
+    """Upload data to bucket under key."""
+    client.put_object(
+        bucket,
+        key,
+        data=BytesIO(data),
+        length=len(data),
+        content_type=content_type,
+    )
 
 def main():
     """
@@ -68,6 +100,9 @@ def main():
 
     # Create landing bucket
     create_bucket(config.LANDING_BUCKET)
+
+    # Create trusted zone bucket
+    create_bucket(config.TRUSTED_BUCKET)
 
 
 

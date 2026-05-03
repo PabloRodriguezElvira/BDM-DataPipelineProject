@@ -4,12 +4,13 @@ from pathlib import Path
 
 # -------------------------- BUCKET NAMES --------------------------
 LANDING_BUCKET = "landing-zone"
-
+TRUSTED_BUCKET = "trusted-zone"
 
 # -------------------------- PATHS FOR EACH ZONE --------------------------
 LANDING_TEMPORAL_PATH = "temporal_landing/"
 LANDING_PERSISTENT_PATH = "persistent_landing/"
 
+TRUSTED_UNSTRUCTURED_PATH  = "unstructured/"
 
 # -------------------------- MINIO CONNECTION --------------------------
 _minio_endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9000").strip()
@@ -58,6 +59,14 @@ AIRFLOW_LZ_SCHEDULE = None
 AIRFLOW_LZ_CATCHUP = False
 AIRFLOW_LZ_MAX_ACTIVE_RUNS = 1
 AIRFLOW_LZ_TAGS = ["bdm", "ingestion", "landing-zone"]
+# Trusted Zone
+AIRFLOW_TZ_DAG_ID = "trusted_zone_pipeline"
+AIRFLOW_TZ_DESCRIPTION = "Batch pipeline: Landing Zone -> Trusted Zone (cleaning)"
+AIRFLOW_TZ_START_DATE = datetime(2026, 4, 10)
+AIRFLOW_TZ_SCHEDULE = None
+AIRFLOW_TZ_CATCHUP = False
+AIRFLOW_TZ_MAX_ACTIVE_RUNS = 1
+AIRFLOW_TZ_TAGS = ["bdm", "trusted-zone"]
 
 # Kafka Streaming
 AIRFLOW_STREAMING_DAG_ID = "apache_kafka_streaming"
@@ -136,3 +145,20 @@ UNSTRUCTURED_TEXT_OUT_DIR = Path("downloaded_data/unstructured/text")
 UNSTRUCTURED_TEXT_JSON_EXTENSIONS = {".json", ".jsonl", ".ndjson"}
 UNSTRUCTURED_TEXT_FILE_EXTENSIONS = {".txt", ".csv", ".tsv"}
 UNSTRUCTURED_TEXT_MAX_FILENAME_LENGTH = 80
+
+
+# -------------------------- TRUSTED ZONE: UNSTRUCTURED --------------------------
+# Landing Zone source prefixes (inside LANDING_BUCKET)
+TRUSTED_LANDING_AUDIO_PREFIX = f"{LANDING_PERSISTENT_PATH}unstructured/audio/data/"
+TRUSTED_LANDING_TEXT_PREFIX  = f"{LANDING_PERSISTENT_PATH}unstructured/text/data/"
+
+# Trusted Zone destination prefixes (inside TRUSTED_BUCKET)
+TRUSTED_AUDIO_PREFIX         = f"{TRUSTED_UNSTRUCTURED_PATH}audio/data/"
+TRUSTED_TEXT_PREFIX          = f"{TRUSTED_UNSTRUCTURED_PATH}text/data/"
+TRUSTED_AUDIO_SKIPPED_PREFIX = f"{TRUSTED_UNSTRUCTURED_PATH}audio/skipped/"
+TRUSTED_TEXT_SKIPPED_PREFIX  = f"{TRUSTED_UNSTRUCTURED_PATH}text/skipped/"
+
+# Audio cleaning parameters
+TRUSTED_AUDIO_TARGET_SAMPLE_RATE      = 16_000  
+TRUSTED_AUDIO_MIN_DURATION_SECONDS    = 0.5
+TRUSTED_AUDIO_PCM_SAMPLE_WIDTH        = 2      

@@ -3,15 +3,11 @@ import json
 import pandas as pd
 import pyarrow as pa
 from deltalake.writer import write_deltalake
-from minio import Minio
 
 import src.common.global_variables as config
 
 
 def _get_storage_options() -> dict:
-    """
-    Storage options for Delta Lake to connect to MinIO.
-    """
     return {
         "AWS_ACCESS_KEY_ID": config.MINIO_ROOT_USER,
         "AWS_SECRET_ACCESS_KEY": config.MINIO_ROOT_PASSWORD,
@@ -28,101 +24,62 @@ def _flatten_metadata_payload(payload: dict, prefix: str = "") -> dict:
     Lists are JSON-encoded to avoid object dtype issues during Arrow conversion.
     """
     flat_row = {}
-
     for key, value in payload.items():
         flat_key = f"{prefix}.{key}" if prefix else key
-
         if isinstance(value, dict):
             flat_row.update(_flatten_metadata_payload(value, flat_key))
         elif isinstance(value, list):
             flat_row[flat_key] = json.dumps(value, ensure_ascii=False)
         else:
             flat_row[flat_key] = value
-
     return flat_row
 
 
-def _dataframe_to_arrow_table(df: pd.DataFrame) -> pa.Table:
+def _write_delta(uri: str, table, storage_options: dict):
     """
-    Convert pandas DataFrame to a PyArrow table compatible with deltalake writes.
+    Write an Arrow table to a Delta Lake URI.
+    Tries the rust engine with schema_mode=merge first; if the installed
+    deltalake version does not support it, falls back to a plain append.
     """
-    return pa.Table.from_pandas(df, preserve_index=False)
-
-
-def process_unstructured_image_metadata_to_delta(client: Minio, object_name: str):
-    """    
-    This function handles the 'Warm Path' by:
-    1. Downloading the raw JSON from the landing bucket.
-    2. Flattening nested vehicle detections into a tabular format.
-    3. Appending the data to a Delta Table using Schema Evolution (merge).
-    """
-    # Download the raw JSON object from MinIO
-    response = client.get_object(config.LANDING_BUCKET, object_name)
     try:
-        content = response.read().decode("utf-8")
-        data = json.loads(content)
-    finally:
-        response.close()
-        response.release_conn()
+        write_deltalake(
+            uri,
+            table,
+            mode="append",
+            schema_mode="merge",
+            engine="rust",
+            storage_options=storage_options,
+        )
+    except TypeError:
+        write_deltalake(uri, table, mode="append", storage_options=storage_options)
 
-    # Data Transformation & Flattening
-    # Map top-level keys and merge with nested detection counts
-    row = {
-        "camera_id": data.get("camera_id"),
-        "timestamp": data.get("date"),
-        "total_frames": data.get("total_frames_processed"),
-        "source_file": object_name
-    }
-    
-    # Dynamically expand vehicle counts (car, truck, etc.) into individual columns
-    # This ensures flexibility if new object classes are detected in the future
-    if "avg_per_frame" in data and isinstance(data["avg_per_frame"], dict):
-        row.update(data["avg_per_frame"])
-    
-    # Create a DataFrame with nullable dtypes to preserve strings and optional values.
-    df = pd.DataFrame([row]).convert_dtypes()
 
-    # Dynamic Path Setup
-    # The Delta Table is identified by its URI (partitioned by camera_id)
-    camera_id = data.get("camera_id", "unknown_camera")
-    delta_path = f"{config.LANDING_PERSISTENT_PATH}unstructured/images/delta/{camera_id}/"
-    uri = f"s3://{config.LANDING_BUCKET}/{delta_path}"
+def _cast_null_columns(table: pa.Table) -> pa.Table:
+    """
+    Cast any pa.null() columns to pa.string().
+    Delta Lake does not accept the null type, which PyArrow infers when
+    a single-row DataFrame has None for every value in a column.
+    """
+    new_fields = []
+    for i, field in enumerate(table.schema):
+        if pa.types.is_null(field.type):
+            table = table.set_column(i, field.name, table.column(i).cast(pa.string()))
+            new_fields.append(field.name)
+    return table
 
-    # Write to Delta Lake
-    # 'mode=append' adds new rows, 'schema_mode=merge' allows for new columns
-    write_deltalake(
-        uri, 
-        _dataframe_to_arrow_table(df), 
-        mode="append", 
-        schema_mode="merge",
-        engine="rust",
-        storage_options=_get_storage_options(),
-    )
-    
-    # Successful integration log
-    print(f"[DELTA SUCCESS] Integrated {object_name} into analytical table at: {delta_path}")
+
 def process_metadata_to_delta(metadata_payload: dict, delta_folder: str):
     """
-    Generic function to convert any metadata dictionary (Audio, Text, Weather)
-    into a row within a Delta Table.
+    Convert a metadata dictionary (audio, text, or weather) into a row
+    in the corresponding Delta table under persistent_landing/.
     """
-    # Flatten the nested JSON into a single-row DataFrame.
-    # convert_dtypes keeps nullable string/boolean/numeric columns stable for Delta writes.
     flat_row = _flatten_metadata_payload(metadata_payload)
     df = pd.DataFrame([flat_row]).convert_dtypes()
+    arrow_table = pa.Table.from_pandas(df, preserve_index=False)
+    arrow_table = _cast_null_columns(arrow_table)
 
-    # Build the destination URI 
     uri = f"s3://{config.LANDING_BUCKET}/{config.LANDING_PERSISTENT_PATH}{delta_folder}"
-
-    # Write to Delta Lake using Schema Evolution (schema_mode="merge")
-    write_deltalake(
-        uri, 
-        _dataframe_to_arrow_table(df), 
-        mode="append", 
-        schema_mode="merge",
-        engine="rust",
-        storage_options=_get_storage_options(),
-    )
+    _write_delta(uri, arrow_table, _get_storage_options())
     print(f"[DELTA SUCCESS] Metadata integrated into table at: {delta_folder}")
     
   

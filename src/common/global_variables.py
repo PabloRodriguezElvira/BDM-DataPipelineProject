@@ -147,6 +147,19 @@ UNSTRUCTURED_TEXT_FILE_EXTENSIONS = {".txt", ".csv", ".tsv"}
 UNSTRUCTURED_TEXT_MAX_FILENAME_LENGTH = 80
 
 
+# -------------------------- CLICKHOUSE --------------------------
+CLICKHOUSE_HOST     = os.getenv("CLICKHOUSE_HOST", "localhost")
+CLICKHOUSE_HTTP_PORT = int(os.getenv("CLICKHOUSE_HTTP_PORT", "8123"))
+CLICKHOUSE_USER     = os.getenv("CLICKHOUSE_USER", "default")
+CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CLICKHOUSE_DB       = os.getenv("CLICKHOUSE_DB", "trusted_zone")
+
+# -------------------------- TRUSTED ZONE: STRUCTURED --------------------------
+TRUSTED_LANDING_STRUCTURED_URI = (
+    f"s3://{LANDING_BUCKET}/{LANDING_PERSISTENT_PATH}structured/delta"
+)
+TRUSTED_STRUCTURED_TABLE = "nyc_collisions"
+
 # -------------------------- TRUSTED ZONE: UNSTRUCTURED --------------------------
 # Landing Zone source prefixes (inside LANDING_BUCKET)
 TRUSTED_LANDING_AUDIO_PREFIX = f"{LANDING_PERSISTENT_PATH}unstructured/audio/data/"

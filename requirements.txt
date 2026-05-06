@@ -15,7 +15,13 @@ tqdm
 
 pandas
 pyarrow
-deltalake
+deltalake>=0.17.0
 
 # Timezones
 pytz
+
+# ClickHouse
+clickhouse-connect
+
+# Spark (trusted zone unstructured)
+pyspark

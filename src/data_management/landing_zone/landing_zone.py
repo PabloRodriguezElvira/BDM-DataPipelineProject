@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Optional
 
+import pandas as pd
+import pyarrow as pa
 from deltalake.writer import write_deltalake
 from minio import Minio
 from minio.commonconfig import CopySource
@@ -17,7 +19,7 @@ from src.common.progress_bar import ProgressBar
 import src.common.global_variables as config
 
 from src.data_management.landing_zone.structured_csv_to_arrow import csv_to_arrow
-from src.data_management.landing_zone.process_metadata_to_delta import process_unstructured_image_metadata_to_delta, process_metadata_to_delta
+from src.data_management.landing_zone.process_metadata_to_delta import process_metadata_to_delta
 
 
 # Data class to represent an operation in landing zone
@@ -157,15 +159,61 @@ def process_structured_csv_object(client: Minio, object_name: str):
         client.remove_object(config.LANDING_BUCKET, object_name)
         return
 
-    write_deltalake(
-        get_structured_delta_uri(),
-        arrow_table,
-        mode="append",
-        schema_mode="merge",
-        engine="rust",
-        storage_options=get_delta_storage_options(),
-    )
+    _write_delta(get_structured_delta_uri(), arrow_table, get_delta_storage_options())
     client.remove_object(config.LANDING_BUCKET, object_name)
+
+
+def _write_delta(uri: str, table, storage_options: dict):
+    """
+    Write an Arrow table to a Delta Lake URI.
+    Tries the rust engine with schema_mode=merge first; if the installed
+    deltalake version does not support it, falls back to a plain append
+    (safe because structured_csv_to_arrow.py normalises every column to string).
+    """
+    try:
+        write_deltalake(
+            uri,
+            table,
+            mode="append",
+            schema_mode="merge",
+            engine="rust",
+            storage_options=storage_options,
+        )
+    except TypeError:
+        # Older deltalake: engine / schema_mode not accepted as keyword args.
+        write_deltalake(uri, table, mode="append", storage_options=storage_options)
+
+
+def process_unstructured_image_metadata_to_delta(client: Minio, object_name: str):
+    """
+    Parse a Kafka camera report JSON and append it to the per-camera Delta table
+    under persistent_landing/unstructured/images/delta/<camera_id>/.
+    """
+    response = client.get_object(config.LANDING_BUCKET, object_name)
+    try:
+        data = json.loads(response.read().decode("utf-8"))
+    finally:
+        response.close()
+        response.release_conn()
+
+    row = {
+        "camera_id": data.get("camera_id"),
+        "timestamp": data.get("date"),
+        "total_frames": data.get("total_frames_processed"),
+        "source_file": object_name,
+    }
+    if "avg_per_frame" in data and isinstance(data["avg_per_frame"], dict):
+        row.update(data["avg_per_frame"])
+
+    df = pd.DataFrame([row]).convert_dtypes()
+    arrow_table = pa.Table.from_pandas(df, preserve_index=False)
+
+    camera_id = data.get("camera_id", "unknown_camera")
+    delta_path = f"{config.LANDING_PERSISTENT_PATH}unstructured/images/delta/{camera_id}/"
+    uri = f"s3://{config.LANDING_BUCKET}/{delta_path}"
+
+    _write_delta(uri, arrow_table, get_delta_storage_options())
+    print(f"[DELTA SUCCESS] Integrated {object_name} into analytical table at: {delta_path}")
 
 
 def build_semi_structured_metadata(
@@ -390,8 +438,8 @@ def process_semi_structured_object(client: Minio, move: ObjectMove):
         payload=payload,
         raw_bytes=raw_bytes,
     )
-    # We process the metadata to delta
     process_metadata_to_delta(metadata_payload, "semi_structured/delta/")
+
     uploaded_objects = []
     try:
         upload_json_bytes(client, move.destination, raw_bytes)
@@ -400,12 +448,12 @@ def process_semi_structured_object(client: Minio, move: ObjectMove):
         metadata_bytes = json.dumps(metadata_payload, indent=2).encode("utf-8")
         upload_json_bytes(client, move.metadata_destination, metadata_bytes)
         uploaded_objects.append(move.metadata_destination)
-
-        client.remove_object(config.LANDING_BUCKET, move.source)
     except Exception:
-        for uploaded_object in uploaded_objects:
-            client.remove_object(config.LANDING_BUCKET, uploaded_object)
+        for obj in uploaded_objects:
+            client.remove_object(config.LANDING_BUCKET, obj)
         raise
+
+    client.remove_object(config.LANDING_BUCKET, move.source)
 
 
 def process_unstructured_text_object(client: Minio, move: ObjectMove):
@@ -422,8 +470,8 @@ def process_unstructured_text_object(client: Minio, move: ObjectMove):
         metadata_destination=move.metadata_destination,
         raw_bytes=raw_bytes,
     )
-    # We process the metadata to delta
     process_metadata_to_delta(metadata_payload, "unstructured/text/delta/")
+
     uploaded_objects = []
     try:
         client.put_object(
@@ -438,12 +486,12 @@ def process_unstructured_text_object(client: Minio, move: ObjectMove):
         metadata_bytes = json.dumps(metadata_payload, indent=2).encode("utf-8")
         upload_json_bytes(client, move.metadata_destination, metadata_bytes)
         uploaded_objects.append(move.metadata_destination)
-
-        client.remove_object(config.LANDING_BUCKET, move.source)
     except Exception:
-        for uploaded_object in uploaded_objects:
-            client.remove_object(config.LANDING_BUCKET, uploaded_object)
+        for obj in uploaded_objects:
+            client.remove_object(config.LANDING_BUCKET, obj)
         raise
+
+    client.remove_object(config.LANDING_BUCKET, move.source)
 
 
 def process_unstructured_audio_object(client: Minio, move: ObjectMove):
@@ -460,8 +508,8 @@ def process_unstructured_audio_object(client: Minio, move: ObjectMove):
         metadata_destination=move.metadata_destination,
         raw_bytes=raw_bytes,
     )
-    # We process the metadata to delta
     process_metadata_to_delta(metadata_payload, "unstructured/audio/delta/")
+
     uploaded_objects = []
     try:
         client.put_object(
@@ -476,12 +524,12 @@ def process_unstructured_audio_object(client: Minio, move: ObjectMove):
         metadata_bytes = json.dumps(metadata_payload, indent=2).encode("utf-8")
         upload_json_bytes(client, move.metadata_destination, metadata_bytes)
         uploaded_objects.append(move.metadata_destination)
-
-        client.remove_object(config.LANDING_BUCKET, move.source)
     except Exception:
-        for uploaded_object in uploaded_objects:
-            client.remove_object(config.LANDING_BUCKET, uploaded_object)
+        for obj in uploaded_objects:
+            client.remove_object(config.LANDING_BUCKET, obj)
         raise
+
+    client.remove_object(config.LANDING_BUCKET, move.source)
 
 
 def iter_objects_in_temporal_bucket(client: Minio):

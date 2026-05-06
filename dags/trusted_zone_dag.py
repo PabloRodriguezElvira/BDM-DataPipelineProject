@@ -25,6 +25,14 @@ with DAG(
     tags=config.AIRFLOW_TZ_TAGS,
 ) as dag:
 
+    trusted_zone_structured = BashOperator(
+        task_id="trusted_zone_structured",
+        bash_command=(
+            f"cd {config.PROJECT_ROOT} && "
+            f"{config.PYTHON_BIN} -m src.data_management.trusted_zone.structured_trusted_zone"
+        ),
+    )
+
     trusted_zone_unstructured = BashOperator(
         task_id="trusted_zone_unstructured",
         bash_command=(
@@ -33,4 +41,4 @@ with DAG(
         ),
     )
 
-    trusted_zone_unstructured
+    [trusted_zone_structured, trusted_zone_unstructured]

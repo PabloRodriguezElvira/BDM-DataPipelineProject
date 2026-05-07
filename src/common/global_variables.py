@@ -151,7 +151,7 @@ UNSTRUCTURED_TEXT_MAX_FILENAME_LENGTH = 80
 CLICKHOUSE_HOST     = os.getenv("CLICKHOUSE_HOST", "localhost")
 CLICKHOUSE_HTTP_PORT = int(os.getenv("CLICKHOUSE_HTTP_PORT", "8123"))
 CLICKHOUSE_USER     = os.getenv("CLICKHOUSE_USER", "default")
-CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "clickhouse")
 CLICKHOUSE_DB       = os.getenv("CLICKHOUSE_DB", "trusted_zone")
 
 # -------------------------- TRUSTED ZONE: STRUCTURED --------------------------

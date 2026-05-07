@@ -48,6 +48,10 @@ Main services:
   Password: `admin123`
 - MinIO API: `http://localhost:9000`
 - Apache Kafka UI: `http://localhost:8081`
+- ClickHouse HTTP: `http://localhost:8123`
+  Username: `default`
+  Password: `clickhouse`
+- ClickHouse native: `localhost:9001`
 
 To run any project module inside the `app` container, use:
 
@@ -118,6 +122,39 @@ Show CLI help:
 
 ```bash
 python -m src.data_management.landing_zone.upload_to_temporal --help
+```
+
+## ClickHouse
+
+ClickHouse stores the cleaned structured data (NYC collisions) in the trusted zone.
+
+**Web SQL interface:** `http://localhost:8123/play`
+Login with username `default` and password `clickhouse`.
+
+Useful queries:
+
+```sql
+-- Count total rows
+SELECT count() FROM trusted_zone.nyc_collisions
+
+-- Preview data
+SELECT * FROM trusted_zone.nyc_collisions LIMIT 100
+
+-- Check for duplicate collision IDs
+SELECT collision_id, count() AS cnt
+FROM trusted_zone.nyc_collisions
+GROUP BY collision_id
+HAVING cnt > 1
+ORDER BY cnt DESC
+
+-- Clear all data (then re-run the trusted zone pipeline to reload)
+TRUNCATE TABLE trusted_zone.nyc_collisions
+```
+
+To run the trusted zone pipeline that populates ClickHouse:
+
+```bash
+docker compose exec app python -m src.data_management.trusted_zone.structured_trusted_zone
 ```
 
 ## Notes

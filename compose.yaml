@@ -7,6 +7,8 @@ x-project-env: &project-env
   PYTHON_BIN: python
   PYTHONPATH: /app
   CLICKHOUSE_HOST: clickhouse
+  CLICKHOUSE_USER: default
+  CLICKHOUSE_PASSWORD: clickhouse
 
 x-optional-env-file: &optional-env-file
   - path: .env
@@ -219,7 +221,7 @@ services:
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_PASSWORD: clickhouse
     ulimits:
       nofile:
         soft: 262144

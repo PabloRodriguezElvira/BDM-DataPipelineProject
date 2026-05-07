@@ -243,7 +243,15 @@ def process_audio_files(spark: SparkSession):
 
 
 def main():
-    spark = SparkSession.builder.appName("TrustedZone-Unstructured").master("local[*]").getOrCreate()
+    spark = (
+        SparkSession.builder
+        .appName("TrustedZone-Unstructured")
+        .master("local[2]")
+        .config("spark.driver.memory", "2g")
+        .config("spark.executor.memory", "2g")
+        .config("spark.sql.shuffle.partitions", "8")
+        .getOrCreate()
+    )
     try:
         process_text_files(spark)
         process_audio_files(spark)

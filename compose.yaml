@@ -161,7 +161,6 @@ services:
           --role Admin \
           --email admin@example.com
     restart: "no"
-
   airflow-webserver:
     image: bdm-airflow:2.9.1
     build: *airflow-build
@@ -170,6 +169,7 @@ services:
     environment:
       <<: *airflow-env
       AIRFLOW__CORE__DAG_RUN_CONF_OVERRIDES_PARAMS: "true"
+      AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: 300
     volumes: *airflow-volumes
     depends_on:
       postgres:
@@ -188,7 +188,6 @@ services:
       - rm -f /opt/airflow/airflow-webserver.pid && exec airflow webserver
     ports:
       - "8080:8080"
-
   airflow-scheduler:
     image: bdm-airflow:2.9.1
     build: *airflow-build
@@ -226,9 +225,23 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    volumes:
+      - mongodb_data:/data/db
 
 volumes:
   postgres_db:
   airflow_logs:
   airflow_plugins:
   clickhouse_data:
+  mongodb_data:
+  
+

@@ -160,6 +160,20 @@ TRUSTED_LANDING_STRUCTURED_URI = (
 )
 TRUSTED_STRUCTURED_TABLE = "nyc_collisions"
 
+# -------------------------- MONGO DB --------------------------
+MONGO_HOST     = os.getenv("MONGO_HOST", "localhost")
+MONGO_PORT     = int(os.getenv("MONGO_PORT", "27017"))
+MONGO_USER     = os.getenv("MONGO_USER", "admin")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "mongo_pass")
+MONGO_DB       = os.getenv("MONGO_DB", "trusted_zone")
+
+# -------------------------- TRUSTED ZONE: SEMI-STRUCTURED --------------------------
+TRUSTED_LANDING_SEMISTRUCTURED_WEATHER_URI = f"s3a://{LANDING_BUCKET}/{LANDING_PERSISTENT_PATH}semi-structured/data"
+TRUSTED_LANDING_CAMERAS_UNSTRUCTURED_URI = f"s3a://{LANDING_BUCKET}/{LANDING_PERSISTENT_PATH}unstructured/images/metadata"
+
+TRUSTED_WEATHER_COLLECTION = "weather_data"
+TRUSTED_CAMERA_COLLECTION  = "camera_aggregates"
+
 # -------------------------- TRUSTED ZONE: UNSTRUCTURED --------------------------
 # Landing Zone source prefixes (inside LANDING_BUCKET)
 TRUSTED_LANDING_AUDIO_PREFIX = f"{LANDING_PERSISTENT_PATH}unstructured/audio/data/"

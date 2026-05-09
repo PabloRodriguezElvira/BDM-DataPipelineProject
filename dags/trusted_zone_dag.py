@@ -41,4 +41,21 @@ with DAG(
         ),
     )
 
-    [trusted_zone_structured, trusted_zone_unstructured]
+    trusted_zone_semistructured_weather = BashOperator(
+        task_id="trusted_zone_semistructured_weather",
+        bash_command=(
+            f"cd {config.PROJECT_ROOT} && "
+            f"{config.PYTHON_BIN} -m src.data_management.trusted_zone.semistructured_weather_trusted_zone"
+        ),
+    )
+
+    trusted_zone_semistructured_cameras = BashOperator(
+        task_id="trusted_zone_semistructured_cameras",
+        bash_command=(
+            f"cd {config.PROJECT_ROOT} && "
+            f"{config.PYTHON_BIN} -m src.data_management.trusted_zone.semistructured_aggregated_trusted_zone"
+        ),
+    )
+
+    [trusted_zone_structured, trusted_zone_unstructured,
+     trusted_zone_semistructured_weather, trusted_zone_semistructured_cameras]

@@ -25,3 +25,6 @@ clickhouse-connect
 
 # Spark (trusted zone unstructured)
 pyspark
+
+# MongoDB
+pymongo

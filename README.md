@@ -164,5 +164,5 @@ docker compose exec app python -m src.data_management.trusted_zone.structured_tr
 - `.env` is optional for `docker compose up`; it is only needed for ingestion flows that require credentials, especially Kaggle-based ones
 - Shared runtime dependencies live in `requirements.txt`
 - Airflow-only dependencies live in `requirements-airflow.txt`
-- For the Kafka image streaming workflow, a small test dataset will be provided in `downloaded_data/unstructured/images` with 11 folders and around 30 images per folder
+- For the Kafka image streaming workflow, a small test dataset will be provided in `downloaded_data/unstructured/images` with 10 folders and around 30 images per folder
 - If the full image dataset is needed, it can be downloaded from: `https://github.com/Math-ML-X/TrafficCAM/blob/main/TrafficCAM-download.md`

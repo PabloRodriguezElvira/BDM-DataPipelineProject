@@ -9,6 +9,11 @@ x-project-env: &project-env
   CLICKHOUSE_HOST: clickhouse
   CLICKHOUSE_USER: default
   CLICKHOUSE_PASSWORD: clickhouse
+  MONGO_HOST: mongodb
+  MONGO_PORT: "27017"
+  MONGO_USER: root
+  MONGO_PASSWORD: rootpassword
+  MONGO_DB: trusted_zone
 
 x-optional-env-file: &optional-env-file
   - path: .env
@@ -49,6 +54,7 @@ services:
     depends_on:
       - minio
       - kafka
+      - mongodb
 
   minio:
     image: minio/minio:latest
@@ -227,7 +233,7 @@ services:
         hard: 262144
     
   mongodb:
-    image: mongo:latest
+    image: public.ecr.aws/docker/library/mongo:latest
     container_name: mongodb
     ports:
       - "27017:27017"
@@ -236,6 +242,20 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: rootpassword
     volumes:
       - mongodb_data:/data/db
+
+  mongo-express:
+    image: public.ecr.aws/docker/library/mongo-express:latest
+    container_name: mongo-express
+    ports:
+      - "8082:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: rootpassword
+      ME_CONFIG_MONGODB_URL: mongodb://root:rootpassword@mongodb:27017/
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      - mongodb
+    restart: unless-stopped
 
 volumes:
   postgres_db:

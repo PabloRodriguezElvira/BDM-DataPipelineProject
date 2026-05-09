@@ -199,13 +199,13 @@ def process_unstructured_image_metadata_to_delta(client: Minio, object_name: str
     row = {
         "camera_id": data.get("camera_id"),
         "timestamp": data.get("date"),
-        "total_frames": data.get("total_frames_processed"),
+        "total_frames": int(data.get("total_frames_processed", 0)),
         "source_file": object_name,
     }
     if "avg_per_frame" in data and isinstance(data["avg_per_frame"], dict):
-        row.update(data["avg_per_frame"])
+        row.update({k: float(v) for k, v in data["avg_per_frame"].items()})
 
-    df = pd.DataFrame([row]).convert_dtypes()
+    df = pd.DataFrame([row])
     arrow_table = pa.Table.from_pandas(df, preserve_index=False)
 
     camera_id = data.get("camera_id", "unknown_camera")
@@ -630,7 +630,10 @@ def main():
                 elif obj.is_semi_structured_json:
                     process_semi_structured_object(client, obj)
                 elif obj.source.startswith(f"{config.LANDING_TEMPORAL_PATH}meta_unstructured_"):
-                    process_unstructured_image_metadata_to_delta(client, obj.source)
+                    try:
+                        process_unstructured_image_metadata_to_delta(client, obj.source)
+                    except Exception as delta_exc:
+                        progress.write(f"[WARN] Delta write failed for {obj.source}, continuing move: {delta_exc}")
                     move_object(client, obj)
                 elif obj.is_unstructured_text:
                     process_unstructured_text_object(client, obj)

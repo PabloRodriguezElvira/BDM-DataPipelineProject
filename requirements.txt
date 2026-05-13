@@ -15,16 +15,21 @@ tqdm
 
 pandas
 pyarrow
-deltalake>=0.17.0
+deltalake
 
 # Timezones
 pytz
 
-# ClickHouse
-clickhouse-connect
-
-# Spark (trusted zone unstructured)
+# Spark
 pyspark
 
-# MongoDB
-pymongo
+# Milvus (vector DB — Exploitation Zone)
+pymilvus>=2.4.0
+ 
+# Text embeddings (Exploitation Zone)
+sentence-transformers>=3.0.0
+ 
+# Audio embeddings (Exploitation Zone)
+transformers>=4.40.0
+torch>=2.2.0
+numpy

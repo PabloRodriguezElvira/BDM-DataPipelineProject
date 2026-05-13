@@ -104,6 +104,9 @@ def main():
     # Create trusted zone bucket
     create_bucket(config.TRUSTED_BUCKET)
 
+    # Create exploitation zone bucket
+    create_bucket(config.EXPLOITATION_BUCKET)
+
 
 
 if __name__ == "__main__":

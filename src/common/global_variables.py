@@ -5,6 +5,7 @@ from pathlib import Path
 # -------------------------- BUCKET NAMES --------------------------
 LANDING_BUCKET = "landing-zone"
 TRUSTED_BUCKET = "trusted-zone"
+EXPLOITATION_BUCKET = "exploitation-zone"
 
 # -------------------------- PATHS FOR EACH ZONE --------------------------
 LANDING_TEMPORAL_PATH = "temporal_landing/"
@@ -189,3 +190,31 @@ TRUSTED_TEXT_SKIPPED_PREFIX  = f"{TRUSTED_UNSTRUCTURED_PATH}text/skipped/"
 TRUSTED_AUDIO_TARGET_SAMPLE_RATE      = 16_000  
 TRUSTED_AUDIO_MIN_DURATION_SECONDS    = 0.5
 TRUSTED_AUDIO_PCM_SAMPLE_WIDTH        = 2      
+
+# -------------------------- MILVUS --------------------------
+MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
+MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
+
+MILVUS_TEXT_COLLECTION  = "text_embeddings"
+MILVUS_AUDIO_COLLECTION = "audio_embeddings"
+MILVUS_EMBEDDING_DIM    = 384   # sentence-transformers/all-MiniLM-L6-v2
+MILVUS_AUDIO_DIM        = 768   # wav2vec2-base
+
+# -------------------------- EXPLOITATION ZONE: UNSTRUCTURED --------------------------
+
+# Source prefixes (inside TRUSTED_BUCKET)
+EXPLOIT_TRUSTED_TEXT_PREFIX  = TRUSTED_TEXT_PREFIX   # reuse trusted paths
+EXPLOIT_TRUSTED_AUDIO_PREFIX = TRUSTED_AUDIO_PREFIX
+
+# Destination prefixes (inside EXPLOITATION_BUCKET)
+EXPLOIT_TEXT_PREFIX  = "unstructured/text/data/"
+EXPLOIT_AUDIO_PREFIX = "unstructured/audio/data/"
+
+# Airflow DAG
+AIRFLOW_EZ_DAG_ID          = "exploitation_zone_unstructured_pipeline"
+AIRFLOW_EZ_DESCRIPTION     = "Trusted Zone -> Exploitation Zone: embeddings (Milvus) + curated files (MinIO)"
+AIRFLOW_EZ_START_DATE      = datetime(2026, 4, 10)
+AIRFLOW_EZ_SCHEDULE        = None
+AIRFLOW_EZ_CATCHUP         = False
+AIRFLOW_EZ_MAX_ACTIVE_RUNS = 1
+AIRFLOW_EZ_TAGS            = ["bdm", "exploitation-zone", "embeddings", "milvus"]

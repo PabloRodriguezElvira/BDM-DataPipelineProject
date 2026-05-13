@@ -20,3 +20,6 @@ RUN PYTHON_MAJOR_MINOR="$(python -c "import sys; print(f'{sys.version_info.major
     pip install --no-cache-dir \
       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.1/constraints-${PYTHON_MAJOR_MINOR}.txt" \
       -r /tmp/requirements-airflow.txt
+
+COPY requirements-ml.txt /tmp/requirements-ml.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-ml.txt

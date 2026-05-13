@@ -1,2 +1,15 @@
--r requirements.txt
 psycopg2-binary
+minio
+kafka-python
+requests
+kaggle
+kagglehub
+kagglesdk
+tqdm
+pandas
+pyarrow
+deltalake
+pytz
+pyspark
+clickhouse-connect
+pymongo

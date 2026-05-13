@@ -16,6 +16,8 @@ tqdm
 pandas
 pyarrow
 deltalake
+clickhouse-connect
+pymongo
 
 # Timezones
 pytz

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-String -Path \"D:\\\\cosas_uni\\\\master\\\\Q2_25-26\\\\BDM\\\\BDM-DataPipelineProject\\\\dags\\\\*.py\" -Pattern \"^import|^from\")",
+      "Bash(Select-Object -ExpandProperty Line)",
+      "Bash(Sort-Object -Unique)"
+    ]
+  }
+}

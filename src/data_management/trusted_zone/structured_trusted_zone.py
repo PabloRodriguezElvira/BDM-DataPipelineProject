@@ -2,8 +2,8 @@
 Trusted Zone pipeline for structured data (NYC motor vehicle collisions).
 
 Reads the Delta Lake table produced by the Landing Zone from MinIO,
-applies cleaning and type-casting transformations, and inserts the
-results into a ClickHouse table for analytical querying.
+applies cleaning and type-casting transformations using PySpark,
+and inserts the results into a ClickHouse table for analytical querying.
 
 Transformations applied
 -----------------------
@@ -17,14 +17,20 @@ Transformations applied
 - Fill remaining string nulls with empty string
 
 Cleaned rows are inserted into ClickHouse: <CLICKHOUSE_DB>.nyc_collisions.
-Rows dropped during cleaning are reported but not stored.
+Rows rejected during cleaning (null/empty/unparseable crash_date) are saved
+as CSV to trusted-zone/structured/skipped/ in MinIO for traceability.
 """
 
-import pandas as pd
+from datetime import datetime
+
 from deltalake import DeltaTable
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, coalesce, lit, to_date, trim, upper
+from pyspark.sql.types import DoubleType, IntegerType, LongType, StringType
 
 import src.common.global_variables as config
 from src.common.clickhouse_client import get_clickhouse_client
+from src.common.minio_manager import write_object_bytes
 
 
 _UINT16_COLS = [
@@ -100,6 +106,8 @@ _FINAL_COLUMNS = [
     "source_file",
 ]
 
+_NUMERIC_COLS = set(_UINT16_COLS) | {"collision_id"}
+
 
 def _delta_storage_options() -> dict:
     return {
@@ -112,77 +120,116 @@ def _delta_storage_options() -> dict:
     }
 
 
-def load_delta_table() -> pd.DataFrame:
-    """Read the structured Delta table from MinIO as a pandas DataFrame."""
+def load_delta_table(spark: SparkSession):
+    """Read the structured Delta table from MinIO as a Spark DataFrame."""
     print("[STRUCTURED] Loading Delta table from Landing Zone...")
     dt = DeltaTable(
         config.TRUSTED_LANDING_STRUCTURED_URI,
         storage_options=_delta_storage_options(),
     )
-    df = dt.to_pandas()
-    print(f"[STRUCTURED] Loaded {len(df):,} rows, {len(df.columns)} columns.")
-    return df
+    df = spark.createDataFrame(dt.to_pandas())
+    total = df.count()
+    print(f"[STRUCTURED] Loaded {total:,} rows, {len(df.columns)} columns.")
+    return df, total
 
 
-def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+def clean_dataframe(df, total: int):
     """
-    Apply all cleaning transformations to the raw Delta DataFrame.
-    Returns the cleaned DataFrame and the number of dropped rows.
+    Apply all cleaning transformations using PySpark.
+
+    Returns (df_clean, df_rejected, dropped):
+      - df_clean    : accepted rows with all transformations applied (cached)
+      - df_rejected : raw rows that failed crash_date validation, for traceability
+      - dropped     : total row count reduction (duplicates + invalid dates)
     """
-    initial = len(df)
+    # Deduplicate on original columns
+    df = df.dropDuplicates()
 
-    # Drop exact duplicates
-    df = df.drop_duplicates()
+    # Parse crash_date into a temporary column to decide accept/reject in one pass
+    df = df.withColumn(
+        "_parsed_date",
+        coalesce(
+            to_date(col("crash_date"), "MM/dd/yyyy"),
+            to_date(col("crash_date"), "yyyy-MM-dd'T'HH:mm:ss.SSS"),
+            to_date(col("crash_date"), "yyyy-MM-dd"),
+        ),
+    )
 
-    # Drop rows without a crash_date (critical field)
-    df = df[df["crash_date"].notna() & (df["crash_date"].str.strip() != "")]
+    # Cache here so both the rejected and accepted branches read from memory
+    df.cache()
 
-    dropped = initial - len(df)
-    if dropped:
-        print(f"[STRUCTURED] Dropped {dropped:,} rows (duplicates or missing crash_date).")
+    is_valid = (
+        col("crash_date").isNotNull()
+        & (trim(col("crash_date")) != "")
+        & col("_parsed_date").isNotNull()
+    )
 
-    # Parse crash_date: the API returns MM/DD/YYYY or YYYY-MM-DDT00:00:00.000
-    df["crash_date"] = pd.to_datetime(df["crash_date"], errors="coerce").dt.date
-    invalid_dates = df["crash_date"].isna().sum()
-    if invalid_dates:
-        print(f"[STRUCTURED][WARN] {invalid_dates:,} rows with unparseable crash_date — dropped.")
-    df = df[df["crash_date"].notna()]
+    df_rejected = df.filter(~is_valid).drop("_parsed_date")
 
-    # Cast latitude / longitude to float (null on error)
-    for col in ("latitude", "longitude"):
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = (
+        df.filter(is_valid)
+        .withColumn("crash_date", col("_parsed_date"))
+        .drop("_parsed_date")
+    )
+
+    # Cast latitude / longitude to double (null on parse error)
+    for c in ("latitude", "longitude"):
+        if c in df.columns:
+            df = df.withColumn(c, col(c).cast(DoubleType()))
 
     # Cast injury/death counts to int, default 0
-    for col in _UINT16_COLS:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype("uint16")
+    for c in _UINT16_COLS:
+        if c in df.columns:
+            df = df.withColumn(c, coalesce(col(c).cast(IntegerType()), lit(0)))
         else:
-            df[col] = 0
+            df = df.withColumn(c, lit(0))
 
-    # Cast collision_id to uint32, default 0
+    # Cast collision_id to long, default 0
     if "collision_id" in df.columns:
-        df["collision_id"] = pd.to_numeric(df["collision_id"], errors="coerce").fillna(0).astype("uint32")
+        df = df.withColumn(
+            "collision_id", coalesce(col("collision_id").cast(LongType()), lit(0))
+        )
     else:
-        df["collision_id"] = 0
+        df = df.withColumn("collision_id", lit(0))
 
-    # Normalize borough and street names
-    for col in _STRING_UPPER_COLS:
-        if col in df.columns:
-            df[col] = df[col].fillna("").str.strip().str.upper()
+    # Normalize borough and street names: strip whitespace, uppercase
+    for c in _STRING_UPPER_COLS:
+        if c in df.columns:
+            df = df.withColumn(c, upper(trim(coalesce(col(c), lit("")))))
         else:
-            df[col] = ""
+            df = df.withColumn(c, lit(""))
 
     # Fill all remaining string columns with empty string
-    str_cols = df.select_dtypes(include="object").columns
-    df[str_cols] = df[str_cols].fillna("")
+    string_cols = [f.name for f in df.schema.fields if isinstance(f.dataType, StringType)]
+    for c in string_cols:
+        df = df.withColumn(c, coalesce(col(c), lit("")))
 
-    # Ensure all expected columns exist (add missing ones as empty/zero)
-    for col in _FINAL_COLUMNS:
-        if col not in df.columns:
-            df[col] = "" if col not in _UINT16_COLS and col != "collision_id" else 0
+    # Add any columns missing from the Delta table with sensible defaults
+    existing = set(df.columns)
+    for c in _FINAL_COLUMNS:
+        if c not in existing:
+            df = df.withColumn(c, lit(0) if c in _NUMERIC_COLS else lit(""))
 
-    return df[_FINAL_COLUMNS], dropped
+    df_clean = df.select(*_FINAL_COLUMNS)
+    df_clean.cache()
+    clean_count = df_clean.count()
+    dropped = total - clean_count
+
+    return df_clean, df_rejected, dropped
+
+
+def save_rejected_rows(df_rejected) -> None:
+    """Write rejected rows as a timestamped CSV to the skipped folder in MinIO."""
+    pandas_df = df_rejected.toPandas()
+    if pandas_df.empty:
+        return
+
+    csv_bytes = pandas_df.to_csv(index=False).encode("utf-8")
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    key = f"{config.TRUSTED_SKIPPED_ROWS_PREFIX}skipped_{timestamp}.csv"
+
+    write_object_bytes(config.TRUSTED_BUCKET, key, csv_bytes, content_type="text/csv")
+    print(f"[STRUCTURED] Saved {len(pandas_df):,} rejected rows → {key}")
 
 
 def ensure_schema(client) -> None:
@@ -195,35 +242,54 @@ def ensure_schema(client) -> None:
     )
 
 
-def insert_to_clickhouse(client, df: pd.DataFrame) -> None:
-    """Insert the cleaned DataFrame into ClickHouse in one batch."""
-    if df.empty:
+def insert_to_clickhouse(client, df) -> None:
+    """Convert the cached Spark DataFrame to pandas and insert into ClickHouse."""
+    pandas_df = df.toPandas()
+    if pandas_df.empty:
         print("[STRUCTURED] No rows to insert.")
         return
 
+    for c in _UINT16_COLS:
+        pandas_df[c] = pandas_df[c].fillna(0).astype("uint16")
+    pandas_df["collision_id"] = pandas_df["collision_id"].fillna(0).astype("uint32")
+
     client.insert_df(
         f"{config.CLICKHOUSE_DB}.{config.TRUSTED_STRUCTURED_TABLE}",
-        df,
+        pandas_df,
     )
-    print(f"[STRUCTURED] Inserted {len(df):,} rows into ClickHouse.")
+    print(f"[STRUCTURED] Inserted {len(pandas_df):,} rows into ClickHouse.")
 
 
 def main():
-    df_raw = load_delta_table()
-    df_clean, dropped = clean_dataframe(df_raw)
-
-    print(
-        f"[STRUCTURED] Clean rows: {len(df_clean):,} | "
-        f"Dropped: {dropped:,} | "
-        f"Total: {len(df_raw):,}"
+    spark = (
+        SparkSession.builder
+        .appName("TrustedZone-Structured")
+        .master("local[*]")
+        .getOrCreate()
     )
-
-    client = get_clickhouse_client()
     try:
-        ensure_schema(client)
-        insert_to_clickhouse(client, df_clean)
+        df_raw, total = load_delta_table(spark)
+        df_clean, df_rejected, dropped = clean_dataframe(df_raw, total)
+
+        print(
+            f"[STRUCTURED] Clean rows: {total - dropped:,} | "
+            f"Dropped: {dropped:,} | "
+            f"Total: {total:,}"
+        )
+
+        client = get_clickhouse_client()
+        try:
+            ensure_schema(client)
+            insert_to_clickhouse(client, df_clean)
+        finally:
+            client.close()
+
+        save_rejected_rows(df_rejected)
+
+        df_clean.unpersist()
+        df_raw.unpersist()
     finally:
-        client.close()
+        spark.stop()
 
     print("[STRUCTURED] Done.")
 

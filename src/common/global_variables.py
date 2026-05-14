@@ -11,6 +11,7 @@ EXPLOITATION_BUCKET = "exploitation-zone"
 LANDING_TEMPORAL_PATH = "temporal_landing/"
 LANDING_PERSISTENT_PATH = "persistent_landing/"
 
+TRUSTED_STRUCTURED_PATH = "structured/"
 TRUSTED_UNSTRUCTURED_PATH  = "unstructured/"
 
 # -------------------------- MINIO CONNECTION --------------------------
@@ -160,6 +161,7 @@ TRUSTED_LANDING_STRUCTURED_URI = (
     f"s3://{LANDING_BUCKET}/{LANDING_PERSISTENT_PATH}structured/delta"
 )
 TRUSTED_STRUCTURED_TABLE = "nyc_collisions"
+TRUSTED_SKIPPED_ROWS_PREFIX = f"{TRUSTED_STRUCTURED_PATH}skipped/"
 
 # -------------------------- MONGO DB --------------------------
 MONGO_HOST     = os.getenv("MONGO_HOST", "localhost")

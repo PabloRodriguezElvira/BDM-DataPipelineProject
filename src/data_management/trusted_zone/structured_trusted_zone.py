@@ -142,8 +142,8 @@ def clean_dataframe(df, total: int):
       - df_rejected : raw rows that failed crash_date validation, for traceability
       - dropped     : total row count reduction (duplicates + invalid dates)
     """
-    # Deduplicate on original columns
-    df = df.dropDuplicates()
+    # Deduplicate by collision_id to handle the same record appearing in multiple CSV parts
+    df = df.dropDuplicates(subset=["collision_id"])
 
     # Parse crash_date into a temporary column to decide accept/reject in one pass
     df = df.withColumn(

@@ -202,6 +202,10 @@ MILVUS_AUDIO_COLLECTION = "audio_embeddings"
 MILVUS_EMBEDDING_DIM    = 384   # sentence-transformers/all-MiniLM-L6-v2
 MILVUS_AUDIO_DIM        = 768   # wav2vec2-base
 
+# -------------------------- EXPLOITATION ZONE: STRUCTURED --------------------------
+EXPLOIT_STRUCTURED_DB    = "exploitation_zone"
+EXPLOIT_STRUCTURED_TABLE = "collisions_weather"
+
 # -------------------------- EXPLOITATION ZONE: UNSTRUCTURED --------------------------
 
 # Source prefixes (inside TRUSTED_BUCKET)

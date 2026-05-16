@@ -199,8 +199,8 @@ MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
 
 MILVUS_TEXT_COLLECTION  = "text_embeddings"
 MILVUS_AUDIO_COLLECTION = "audio_embeddings"
-MILVUS_EMBEDDING_DIM    = 384   # sentence-transformers/all-MiniLM-L6-v2
-MILVUS_AUDIO_DIM        = 768   # wav2vec2-base
+MILVUS_EMBEDDING_DIM    = 128   # hashing-trick vectorizer (unigrams + bigrams)
+MILVUS_AUDIO_DIM        = 64    # 16 windows × 4 acoustic features
 
 # -------------------------- EXPLOITATION ZONE: STRUCTURED --------------------------
 EXPLOIT_STRUCTURED_DB    = "exploitation_zone"

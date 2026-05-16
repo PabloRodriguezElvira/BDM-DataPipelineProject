@@ -14,6 +14,8 @@ x-project-env: &project-env
   MONGO_USER: root
   MONGO_PASSWORD: rootpassword
   MONGO_DB: trusted_zone
+  MILVUS_HOST: milvus
+  MILVUS_PORT: "19530"
 
 x-optional-env-file: &optional-env-file
   - path: .env
@@ -257,11 +259,78 @@ services:
       - mongodb
     restart: unless-stopped
 
+  # ── Milvus standalone (etcd + dedicated MinIO + milvus core) ──────────────
+  # Vector database used by the Exploitation Zone for unstructured embeddings.
+  # Milvus standalone needs its own etcd (metadata) and a private MinIO
+  # instance (object storage). We keep them isolated from the project's
+  # main MinIO to avoid bucket-name conflicts and shared-credentials issues.
+
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: milvus-etcd
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - milvus_etcd:/etcd
+    command: >
+      etcd
+      -advertise-client-urls=http://127.0.0.1:2379
+      -listen-client-urls http://0.0.0.0:2379
+      --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus-minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: milvus-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - milvus_minio:/minio_data
+    command: minio server /minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus:
+    image: milvusdb/milvus:v2.4.5
+    container_name: milvus
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"   # gRPC (PyMilvus client)
+      - "9091:9091"     # health/metrics
+    depends_on:
+      - milvus-etcd
+      - milvus-minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 60s
+
 volumes:
   postgres_db:
   airflow_logs:
   airflow_plugins:
   clickhouse_data:
   mongodb_data:
-  
-
+  milvus_etcd:
+  milvus_minio:
+  milvus_data:

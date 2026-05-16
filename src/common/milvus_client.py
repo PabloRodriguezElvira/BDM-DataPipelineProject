@@ -53,15 +53,9 @@ def wait_for_milvus() -> None:
 
 
 def connect() -> None:
-    """Connect to Milvus (idempotent)."""
-    try:
-        connections.connect(
-            alias="default",
-            host=config.MILVUS_HOST,
-            port=config.MILVUS_PORT,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Cannot connect to Milvus: {exc}") from exc
+    """Connect to Milvus, waiting for the server to be ready if necessary.
+    Tolerates the ~30-60s startup time of a freshly-launched container."""
+    wait_for_milvus()
 
 
 # ── Schema builders ──────────────────────────────────────────────────────────
@@ -98,8 +92,37 @@ def _audio_schema() -> CollectionSchema:
 
 # ── Collection management ────────────────────────────────────────────────────
 
-def get_or_create_collection(name: str, schema: CollectionSchema) -> Collection:
-    """Return the named collection, creating it (+ index) if absent."""
+def _existing_dim(name: str) -> int | None:
+    """Return the embedding-field dim of the existing collection, or None."""
+    try:
+        existing = Collection(name)
+        for f in existing.schema.fields:
+            if f.name == "embedding":
+                return f.params.get("dim")
+    except Exception:
+        return None
+    return None
+
+
+def get_or_create_collection(
+    name: str, schema: CollectionSchema, expected_dim: int
+) -> Collection:
+    """
+    Return the named collection, creating it (+ index) if absent.
+    If a collection with the same name exists but its embedding dimension
+    doesn't match `expected_dim`, drop it and recreate (a vector field's
+    dim cannot be altered in place). This makes the pipeline safe to run
+    after the encoder has changed.
+    """
+    if utility.has_collection(name):
+        current = _existing_dim(name)
+        if current is not None and current != expected_dim:
+            print(
+                f"[Milvus] Collection '{name}' has dim={current}, "
+                f"expected {expected_dim}. Dropping and recreating."
+            )
+            utility.drop_collection(name)
+
     if not utility.has_collection(name):
         col = Collection(name=name, schema=schema)
         col.create_index(field_name="embedding", index_params=_INDEX_PARAMS)
@@ -111,14 +134,40 @@ def get_or_create_collection(name: str, schema: CollectionSchema) -> Collection:
 
 
 def get_text_collection() -> Collection:
-    return get_or_create_collection(config.MILVUS_TEXT_COLLECTION, _text_schema())
+    return get_or_create_collection(
+        config.MILVUS_TEXT_COLLECTION, _text_schema(), config.MILVUS_EMBEDDING_DIM
+    )
 
 
 def get_audio_collection() -> Collection:
-    return get_or_create_collection(config.MILVUS_AUDIO_COLLECTION, _audio_schema())
+    return get_or_create_collection(
+        config.MILVUS_AUDIO_COLLECTION, _audio_schema(), config.MILVUS_AUDIO_DIM
+    )
 
 
 # ── Upsert helpers ───────────────────────────────────────────────────────────
+
+def _truncate(values: List[str], max_bytes: int) -> List[str]:
+    """
+    Clip every string so its UTF-8 encoding fits in `max_bytes` bytes.
+    Milvus VARCHAR `max_length` is enforced in BYTES (UTF-8), not characters,
+    so multi-byte characters (accents, em-dashes, emoji) can overflow the
+    limit even when the character count looks small. `errors="ignore"` on
+    the decode drops any partial multi-byte char left at the boundary.
+    The vector and the rest of the metadata still get persisted — we just
+    lose the tail of one string field. The full original is always
+    available in MinIO.
+    """
+    out: List[str] = []
+    for s in values:
+        s = s or ""
+        encoded = s.encode("utf-8")
+        if len(encoded) <= max_bytes:
+            out.append(s)
+        else:
+            out.append(encoded[:max_bytes].decode("utf-8", errors="ignore"))
+    return out
+
 
 def upsert_text_embeddings(
     collection:  Collection,
@@ -132,15 +181,16 @@ def upsert_text_embeddings(
     char_counts: List[int],
     word_counts: List[int],
 ) -> None:
-    """Insert a batch of text embedding records into Milvus."""
+    """Insert a batch of text embedding records into Milvus.
+    Variable-length strings are truncated to fit the schema's max_length."""
     data = [
-        filenames,
+        _truncate(filenames,   512),
         embeddings,
-        headlines,
-        categories,
-        authors,
-        pub_dates,
-        previews,
+        _truncate(headlines,   512),
+        _truncate(categories,  128),
+        _truncate(authors,     256),
+        _truncate(pub_dates,    64),
+        _truncate(previews,   1024),
         char_counts,
         word_counts,
     ]
@@ -158,7 +208,7 @@ def upsert_audio_embeddings(
 ) -> None:
     """Insert a batch of audio embedding records into Milvus."""
     data = [
-        filenames,
+        _truncate(filenames, 512),
         embeddings,
         durations,
         sample_rates,

@@ -6,7 +6,7 @@ from datetime import datetime
 import io
 from pathlib import Path
 import pytz
-
+    
 from kafka import KafkaConsumer
 import src.common.global_variables as config
 from src.common.minio_client import get_minio_client
@@ -64,7 +64,10 @@ def consume_and_aggregate():
 
                         buffer = state[camera_id]
                         buffer["frames"] += 1
-
+                        
+                        #We are not going to use this code part in this second delivery.
+                        #This is because we will use spark_streaming.py to detect alerts.
+                        #For this reason it is not necessary to store images in a local path
                         # Create directory structure and persist image locally
                         camera_path = base_dir / camera_id / today
                         camera_path.mkdir(parents=True, exist_ok=True)
@@ -76,6 +79,7 @@ def consume_and_aggregate():
                             full_image_path.write_bytes(base64.b64decode(img_b64))
                         except PermissionError as exc:
                             print(f"WARNING: Local image persistence skipped for {full_image_path} - {exc}")
+                        
 
                         for label, count in detections.items():
                             buffer["counts"][label] = buffer["counts"].get(label, 0) + count

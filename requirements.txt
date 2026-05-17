@@ -24,3 +24,6 @@ pytz
 
 # Spark
 pyspark
+
+# Computer Vision (Hot Path)
+opencv-python-headless

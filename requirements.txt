@@ -27,3 +27,7 @@ pyspark
 
 # Computer Vision (Hot Path)
 opencv-python-headless
+
+# Dashboard
+streamlit
+plotly

@@ -245,6 +245,21 @@ services:
     volumes:
       - mongodb_data:/data/db
 
+  dashboard:
+    image: bdm-app:latest
+    build: *app-build
+    container_name: bdm-dashboard
+    env_file: *optional-env-file
+    environment:
+      <<: *project-env
+    volumes:
+      - .:/app
+    depends_on:
+      - clickhouse
+    command: streamlit run src/data_consumption/structured_data/dashboard.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+
   mongo-express:
     image: public.ecr.aws/docker/library/mongo-express:latest
     container_name: mongo-express

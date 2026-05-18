@@ -23,7 +23,7 @@ pymongo
 pytz
 
 # Spark
-pyspark
+pyspark==3.5.1
 
 # Computer Vision (Hot Path)
 opencv-python-headless

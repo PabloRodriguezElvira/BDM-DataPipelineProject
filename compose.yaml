@@ -260,6 +260,21 @@ services:
     ports:
       - "8501:8501"
 
+  dashboard-ml:
+    image: bdm-app:latest
+    build: *app-build
+    container_name: bdm-dashboard-ml
+    env_file: *optional-env-file
+    environment:
+      <<: *project-env
+    volumes:
+      - .:/app
+    depends_on:
+      - clickhouse
+    command: streamlit run src/data_consumption/structured_data/risk_prediction.py --server.port 8502 --server.address 0.0.0.0
+    ports:
+      - "8502:8502"
+
   mongo-express:
     image: public.ecr.aws/docker/library/mongo-express:latest
     container_name: mongo-express

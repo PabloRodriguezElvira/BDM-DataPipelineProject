@@ -31,3 +31,7 @@ opencv-python-headless
 # Dashboard
 streamlit
 plotly
+
+# Machine Learning
+scikit-learn
+xgboost

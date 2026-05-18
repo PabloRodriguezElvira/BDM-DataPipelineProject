@@ -8,12 +8,6 @@ from pyspark.sql.functions import col, from_json, udf, when, upper, date_format,
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
 import src.common.global_variables as config
 
-# ---------------------------------------------------------
-# 1. COMPUTER VISION MODEL (MobileNet-SSD via OpenCV DNN)
-# ---------------------------------------------------------
-# Paths to the MobileNet-SSD files (Relative paths for Docker)
-PROTOTXT_PATH = "models/MobileNetSSD_deploy.prototxt"
-MODEL_PATH = "models/MobileNetSSD_deploy.caffemodel"
 
 # This variable will hold the model locally on each Spark worker node
 net_local = None
@@ -33,7 +27,7 @@ def process_cv_image(base64_str):
             return 0
         
         if net_local is None:
-            net_local = cv2.dnn.readNetFromCaffe(PROTOTXT_PATH, MODEL_PATH)
+            net_local = cv2.dnn.readNetFromCaffe(config.PROTOTXT_PATH, config.MODEL_PATH)# we add the paths from CV model
         
         # 1 Reconstruct image from Base64
         img_bytes = base64.b64decode(base64_str)

@@ -1,10 +1,10 @@
 ---------------------------------------------------
 [CRITICAL TRAFFIC CONGESTION ALERT]
 ---------------------------------------------------
-Timestamp : 2026-05-18 18:06:15
-Borough   : BROOKLYN
-Street    : Flatbush Avenue
-Camera ID : NT2_O1
+Timestamp : 2026-05-18 18:32:15
+Borough   : QUEENS
+Street    : Northern Boulevard
+Camera ID : NT4_O2
 Details   : Heavy traffic detected. A total of 21 vehicles 
             were counted in the recent 15-second window.
 ---------------------------------------------------

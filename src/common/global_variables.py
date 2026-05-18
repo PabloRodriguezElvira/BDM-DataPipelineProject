@@ -206,6 +206,7 @@ MILVUS_AUDIO_DIM        = 64    # 16 windows × 4 acoustic features
 EXPLOIT_STRUCTURED_DB    = "exploitation_zone"
 EXPLOIT_STRUCTURED_TABLE = "collisions_weather"
 
+
 # -------------------------- EXPLOITATION ZONE: UNSTRUCTURED --------------------------
 
 # Source prefixes (inside TRUSTED_BUCKET)
@@ -224,3 +225,7 @@ AIRFLOW_EZ_SCHEDULE        = None
 AIRFLOW_EZ_CATCHUP         = False
 AIRFLOW_EZ_MAX_ACTIVE_RUNS = 1
 AIRFLOW_EZ_TAGS            = ["bdm", "exploitation-zone", "embeddings", "milvus"]
+
+# -------------------------- CONSUMPTION ZONE: STREAMING--------------------------
+PROTOTXT_PATH = "models/MobileNetSSD_deploy.prototxt"
+MODEL_PATH = "models/MobileNetSSD_deploy.caffemodel"

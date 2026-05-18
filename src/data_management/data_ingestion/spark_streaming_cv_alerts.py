@@ -1,17 +1,19 @@
 import base64
 import numpy as np
 import cv2
+import random
+import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json, udf, when, upper, current_timestamp, date_format, window, max as spark_max
+from pyspark.sql.functions import col, from_json, udf, when, upper, date_format, window, max as spark_max
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
 import src.common.global_variables as config
 
 # ---------------------------------------------------------
 # 1. COMPUTER VISION MODEL (MobileNet-SSD via OpenCV DNN)
 # ---------------------------------------------------------
-# Paths to the MobileNet-SSD files
-PROTOTXT_PATH = "/models/MobileNetSSD_deploy.prototxt"
-MODEL_PATH = "/models/MobileNetSSD_deploy.caffemodel"
+# Paths to the MobileNet-SSD files (Relative paths for Docker)
+PROTOTXT_PATH = "models/MobileNetSSD_deploy.prototxt"
+MODEL_PATH = "models/MobileNetSSD_deploy.caffemodel"
 
 # This variable will hold the model locally on each Spark worker node
 net_local = None
@@ -30,31 +32,28 @@ def process_cv_image(base64_str):
         if not base64_str: 
             return 0
         
-        # FIX: Load the network inside the worker node only once to avoid Pickling/Serialization errors
         if net_local is None:
             net_local = cv2.dnn.readNetFromCaffe(PROTOTXT_PATH, MODEL_PATH)
         
-        # 1. Reconstruct image from Base64
+        # 1 Reconstruct image from Base64
         img_bytes = base64.b64decode(base64_str)
         np_arr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         
-        # 2. Prepare the image for the Neural Network 
-        # MobileNet requires images to be resized to 300x300 pixels
+        # 2 Prepare the image for the Neural Network 
         blob = cv2.dnn.blobFromImage(cv2.resize(img, (300, 300)), 0.007843, (300, 300), 127.5)
         net_local.setInput(blob)
         
-        # 3. Run the forward pass (Inference) to get predictions
+        # 3 Run the forward pass (Inference) to get predictions
         detections = net_local.forward()
         
         vehicle_count = 0
         
-        # 4. Iterate over all object detections found in the image
+        # 4 Iterate over all object detections found in the image
         for i in range(detections.shape[2]):
             confidence = detections[0, 0, i, 2]
             
-            # Filtro de confianza de la IA en 0.4 para asegurar detecciones reales
-            if confidence > 0.4:
+            if confidence > 0.1:
                 class_id = int(detections[0, 0, i, 1])
                 # If the detected object is a vehicle, increase the counter
                 if class_id in VEHICLE_CLASSES:
@@ -67,35 +66,121 @@ def process_cv_image(base64_str):
 # Convert the Python function into a Spark User Defined Function (UDF)
 cv_udf = udf(process_cv_image, IntegerType())
 
+
+# ---------------------------------------------------------
+# NEW: RANDOM STREET GENERATOR BY BOROUGH
+# ---------------------------------------------------------
+# Dictionary mapping each borough to 4 random streets
+BOROUGH_STREETS = {
+    "MANHATTAN": ["5th Avenue", "Broadway", "Times Square Blvd", "Wall Street"],
+    "BROOKLYN": ["Flatbush Avenue", "Atlantic Avenue", "Bedford Avenue", "Fulton Street"],
+    "QUEENS": ["Queens Boulevard", "Astoria Boulevard", "Northern Boulevard", "Roosevelt Avenue"],
+    "STATEN ISLAND": ["Richmond Terrace", "Hylan Boulevard", "Victory Boulevard", "Bay Street"]
+}
+
+def get_random_street(borough_name):
+    """Returns a random street from the given borough dictionary."""
+    if borough_name in BOROUGH_STREETS:
+        return random.choice(BOROUGH_STREETS[borough_name])
+    return "Unknown Street"
+
+# Register the Python function as a Spark UDF
+street_udf = udf(get_random_street, StringType())
+
+
+# ---------------------------------------------------------
+# NEW: UNIFIED SINK (CONSOLE + TXT FILES) WITH CACHE
+# ---------------------------------------------------------
+def process_and_save_alerts(df_batch, batch_id):
+    """
+    Saves the dataframe in RAM to avoid executing the heavy AI twice.
+    Prints to console and then creates the .txt files in the Alerts folder.
+    """
+    # 1. Freeze the table in RAM (Super important to prevent crashes!)
+    df_batch.persist()
+
+    # 2. Print to console
+    print(f"\n-------------------------------------------")
+    print(f"Batch: {batch_id}")
+    print(f"-------------------------------------------")
+    df_batch.show(truncate=False)
+    
+    # 3. Collect data for the .txt files
+    alerts_list = df_batch.collect()
+    
+    # 4. Clear the RAM so the next Batch doesn't explode
+    df_batch.unpersist()
+    
+    # If there are no alerts in this batch, we stop here
+    if not alerts_list:
+        return
+        
+    # Create Alerts folder if it doesn't exist
+    output_dir = "Alerts"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for row in alerts_list:
+        borough = row["borough"]
+        street = row["street_name"]
+        vehicles = row["max_vehicles"]
+        alert_time = row["alert_time"]
+        camera_id = row["camera_id_original"]
+        
+        # Create professional alert message
+        alert_message = (
+            f"---------------------------------------------------\n"
+            f"[CRITICAL TRAFFIC CONGESTION ALERT]\n"
+            f"---------------------------------------------------\n"
+            f"Timestamp : {alert_time}\n"
+            f"Borough   : {borough}\n"
+            f"Street    : {street}\n"
+            f"Camera ID : {camera_id}\n"
+            f"Details   : Heavy traffic detected. A total of {vehicles} vehicles \n"
+            f"            were counted in the recent 15-second window.\n"
+            f"---------------------------------------------------\n"
+        )
+        
+        # Save file safely
+        safe_time = alert_time.replace(" ", "_").replace(":", "-")
+        filename = f"ALERT_{borough}_{camera_id}_{safe_time}.txt"
+        filepath = os.path.join(output_dir, filename)
+        
+        try:
+            with open(filepath, "w", encoding="utf-8") as file:
+                file.write(alert_message)
+        except Exception as e:
+            print(f"Error writing TXT file: {e}")
+
+
 # ---------------------------------------------------------
 # 2. SPARK STREAMING PIPELINE (Hot Path + Enrichment)
 # ---------------------------------------------------------
 def run_streaming_alerts():
     print("Starting Spark Streaming (Hot Path) with MobileNet-SSD AI and Time Windows.")
 
-    # 1. EL MOTOR: Inicializar Spark (Con 4GB de RAM y 10 particiones)
+    # 1. THE ENGINE: Initialize Spark (2GB RAM to prevent Docker crashes)
     spark = SparkSession.builder \
         .appName("HotPath-CV-Alerts") \
         .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1") \
-        .config("spark.driver.memory", "4g") \
-        .config("spark.executor.memory", "4g") \
+        .config("spark.driver.memory", "2g") \
+        .config("spark.executor.memory", "2g") \
         .config("spark.sql.shuffle.partitions", "10") \
         .getOrCreate()
         
-    # Usar hora de NY
+    # NY time to make it realistic
     spark.conf.set("spark.sql.session.timeZone", "America/New_York")
     
-    # Silenciar los avisos amarillos (Warnings)
+    # Silence yellow warnings
     spark.sparkContext.setLogLevel("ERROR")
 
-    # Esquema JSON
+    # JSON Schema
     json_schema = StructType([
         StructField("video_id", StringType(), True),
         StructField("image_data", StringType(), True),
-        StructField("timestamp", DoubleType(), True) # <-- Timestamp needed for windows
+        StructField("timestamp", DoubleType(), True)
     ])
 
-    # 2. EL EMBUDO: Conectar a Kafka (Limitando a 10 fotos por Batch para no ahogar la RAM)
+    # Connect to kafka limiting to 10 seconds offsets
     df_kafka = spark.readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", config.KAFKA_SERVER) \
@@ -104,26 +189,21 @@ def run_streaming_alerts():
         .option("maxOffsetsPerTrigger", 10) \
         .load()
 
-    # Extraer datos de Kafka
+    # Extract data from kafka
     df_parsed = df_kafka.select(
         from_json(col("value").cast("string"), json_schema).alias("data")
     ).select("data.*")
 
-    # Convertir timestamp
+    # Convert to timestamp
     df_parsed = df_parsed.withColumn("event_time", col("timestamp").cast("timestamp"))
 
-    # Aplicar Inteligencia Artificial (Detección base real)
+    # Apply the AI algorithm
     df_base_cv = df_parsed.withColumn("raw_count", cv_udf(col("image_data")))
 
-    # 🚀 TRUCO DE SIMULACIÓN: Si la IA detecta presencia real de vehículos (> 0), 
-    # le sumamos 19 artificialmente para forzar el escenario de colapso de tráfico (Alertas de producción).
-    df_cv = df_base_cv.withColumn(
-        "vehicle_count",
-        when(col("raw_count") > 0, col("raw_count") + 19)
-        .otherwise(0)
-    )
+    # Base simulation logic: sum 19 to the raw count
+    df_cv = df_base_cv.withColumn("vehicle_count", col("raw_count") + 19)
 
-    # Enriquecer con Distritos (Boroughs)
+    # Add borough attribute based on camera ID
     df_enriched = df_cv.withColumn(
         "borough",
         when(col("video_id").rlike("^Nd"), "MANHATTAN")
@@ -135,7 +215,7 @@ def run_streaming_alerts():
         "camera_id_original", upper(col("video_id"))
     )
 
-    # 3. FILTRO ANTI-SPAM: Ventanas de 15 segundos
+    # 15 seconds tumbling window grouping
     df_windowed = df_enriched \
         .withWatermark("event_time", "15 seconds") \
         .groupBy(
@@ -147,26 +227,29 @@ def run_streaming_alerts():
 
     df_windowed = df_windowed.withColumn("alert_time", date_format(col("window.start"), "yyyy-MM-dd HH:mm:ss"))
 
-    # 4. 🔥 ALERTA REAL DE PRODUCCIÓN: Filtrar solo atascos graves (>= 20 vehículos)
-    df_alerts = df_windowed.filter(col("max_vehicles") >= 20) \
-                           .select("alert_time", "borough", "camera_id_original", "max_vehicles")
+    # Apply the random street UDF to the borough column
+    df_windowed_streets = df_windowed.withColumn("street_name", street_udf(col("borough")))
 
-    print("Alert system activated. Displaying grouped traffic alerts (>=20 vehicles) in New York.")
+    # Alert >= 20 vehicles (Only true detections of 1+ vehicles will pass since base is 19)
+    df_alerts = df_windowed_streets.filter(col("max_vehicles") >= 20) \
+                                   .select("alert_time", "borough", "street_name", "camera_id_original", "max_vehicles")
 
-    # Imprimir en consola
+    print("Alert system activated. Displaying grouped traffic alerts (>=20 vehicles) in New York. \n" \
+    "Press Ctrl + C to stop")
+
+    # ONE SINGLE UNIFIED QUERY USING FOREACHBATCH
     query = df_alerts.writeStream \
-        .format("console") \
-        .option("truncate", "false") \
+        .foreachBatch(process_and_save_alerts) \
         .outputMode("update") \
         .start()
 
-    # Mantener vivo el streaming
+    # Keep streaming alive
     try:
         import time
         while query.isActive:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("Stopping streaming query manually...")
+        print("Stopping streaming query manually.")
         query.stop()
 
 if __name__ == "__main__":

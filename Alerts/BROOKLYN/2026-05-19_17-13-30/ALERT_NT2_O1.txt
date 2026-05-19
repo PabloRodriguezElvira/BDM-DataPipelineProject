@@ -1,0 +1,10 @@
+---------------------------------------------------
+[CRITICAL TRAFFIC CONGESTION ALERT]
+---------------------------------------------------
+Timestamp : 2026-05-19 17:13:30
+Borough   : BROOKLYN
+Street    : Atlantic Avenue
+Camera ID : NT2_O1
+Details   : Heavy traffic detected. A total of 21 vehicles 
+            were counted in the recent 15-second window.
+---------------------------------------------------

@@ -4,7 +4,7 @@ import cv2
 import random
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json, udf, when, upper, date_format, window, max as spark_max
+from pyspark.sql.functions import col, from_json, udf, when, upper, date_format, window, max as spark_max, struct
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
 import src.common.global_variables as config
 
@@ -61,9 +61,7 @@ def process_cv_image(base64_str):
 cv_udf = udf(process_cv_image, IntegerType())
 
 
-# ---------------------------------------------------------
-# NEW: RANDOM STREET GENERATOR BY BOROUGH
-# ---------------------------------------------------------
+
 # Dictionary mapping each borough to 4 random streets
 BOROUGH_STREETS = {
     "MANHATTAN": ["5th Avenue", "Broadway", "Times Square Blvd", "Wall Street"],
@@ -82,24 +80,26 @@ def get_random_street(borough_name):
 street_udf = udf(get_random_street, StringType())
 
 
+
 # ---------------------------------------------------------
-# NEW: UNIFIED SINK (CONSOLE + TXT FILES) WITH CACHE
+# NEW: UNIFIED SINK (CONSOLE + TXT FILES + IMAGES) WITH CACHE
 # ---------------------------------------------------------
 def process_and_save_alerts(df_batch, batch_id):
     """
     Saves the dataframe in RAM to avoid executing the heavy AI twice.
-    Prints to console and then creates the .txt files in the Alerts folder.
+    Prints to console and creates nested folders (Alerts/Borough/Time) 
+    containing the .txt report and the .jpg image.
     """
     # 1. Freeze the table in RAM (Super important to prevent crashes!)
     df_batch.persist()
 
-    # 2. Print to console
+    # 2. Print to console (dropping image_data so it doesn't flood the terminal with Base64 text)
     print(f"\n-------------------------------------------")
     print(f"Batch: {batch_id}")
     print(f"-------------------------------------------")
-    df_batch.show(truncate=False)
+    df_batch.drop("image_data").show(truncate=False)
     
-    # 3. Collect data for the .txt files
+    # 3. Collect data for the files
     alerts_list = df_batch.collect()
     
     # 4. Clear the RAM so the next Batch doesn't explode
@@ -109,18 +109,22 @@ def process_and_save_alerts(df_batch, batch_id):
     if not alerts_list:
         return
         
-    # Create Alerts folder if it doesn't exist
-    output_dir = "Alerts"
-    os.makedirs(output_dir, exist_ok=True)
-    
     for row in alerts_list:
         borough = row["borough"]
         street = row["street_name"]
         vehicles = row["max_vehicles"]
         alert_time = row["alert_time"]
         camera_id = row["camera_id_original"]
+        image_b64 = row["image_data"]
         
-        # Create professional alert message
+        # Format time safely for folder names (no colons or spaces)
+        safe_time = alert_time.replace(" ", "_").replace(":", "-")
+        
+        # Create nested folder structure: Alerts/Borough/Time
+        alert_dir = os.path.join("Alerts", borough, safe_time)
+        os.makedirs(alert_dir, exist_ok=True)
+        
+        # 1. Save the .txt alert file
         alert_message = (
             f"---------------------------------------------------\n"
             f"[CRITICAL TRAFFIC CONGESTION ALERT]\n"
@@ -134,21 +138,26 @@ def process_and_save_alerts(df_batch, batch_id):
             f"---------------------------------------------------\n"
         )
         
-        # Save file safely
-        safe_time = alert_time.replace(" ", "_").replace(":", "-")
-        filename = f"ALERT_{borough}_{camera_id}_{safe_time}.txt"
-        filepath = os.path.join(output_dir, filename)
-        
+        txt_filepath = os.path.join(alert_dir, f"ALERT_{camera_id}.txt")
         try:
-            with open(filepath, "w", encoding="utf-8") as file:
+            with open(txt_filepath, "w", encoding="utf-8") as file:
                 file.write(alert_message)
         except Exception as e:
             print(f"Error writing TXT file: {e}")
 
+        # 2. Decode Base64 and save the .jpg image
+        if image_b64:
+            try:
+                img_bytes = base64.b64decode(image_b64)
+                img_filepath = os.path.join(alert_dir, f"PHOTO_{camera_id}.jpg")
+                with open(img_filepath, "wb") as img_file:
+                    img_file.write(img_bytes)
+            except Exception as e:
+                print(f"Error saving Image file: {e}")
 
-# ---------------------------------------------------------
-# 2. SPARK STREAMING PIPELINE (Hot Path + Enrichment)
-# ---------------------------------------------------------
+
+
+# Spark streaming pipeline 
 def run_streaming_alerts():
     print("Starting Spark Streaming (Hot Path) with MobileNet-SSD AI and Time Windows.")
 
@@ -217,16 +226,23 @@ def run_streaming_alerts():
             col("camera_id_original"),
             col("borough")
         ) \
-        .agg(spark_max("vehicle_count").alias("max_vehicles"))
+        .agg(
+            # PACK: (vehicles, image). max() will evaluate based on the first item (vehicles)
+            spark_max(struct(col("vehicle_count"), col("image_data"))).alias("max_combo")
+        )
 
-    df_windowed = df_windowed.withColumn("alert_time", date_format(col("window.start"), "yyyy-MM-dd HH:mm:ss"))
+    # UNPACK: Extract the vehicles and the exact image that triggered that max count
+    df_windowed = df_windowed \
+        .withColumn("max_vehicles", col("max_combo.vehicle_count")) \
+        .withColumn("image_data", col("max_combo.image_data")) \
+        .withColumn("alert_time", date_format(col("window.start"), "yyyy-MM-dd HH:mm:ss"))
 
     # Apply the random street UDF to the borough column
     df_windowed_streets = df_windowed.withColumn("street_name", street_udf(col("borough")))
 
-    # Alert >= 20 vehicles (Only true detections of 1+ vehicles will pass since base is 19)
+    # Alert >= 20 vehicles. Select all necessary columns including image_data
     df_alerts = df_windowed_streets.filter(col("max_vehicles") >= 20) \
-                                   .select("alert_time", "borough", "street_name", "camera_id_original", "max_vehicles")
+                                   .select("alert_time", "borough", "street_name", "camera_id_original", "max_vehicles", "image_data")
 
     print("Alert system activated. Displaying grouped traffic alerts (>=20 vehicles) in New York. \n" \
     "Press Ctrl + C to stop")

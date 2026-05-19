@@ -7,7 +7,7 @@ Two charts:
 
 Run locally (ClickHouse must be reachable at localhost:8123):
     pip install streamlit plotly clickhouse-connect
-    streamlit run src/data_consumption/dashboard.py
+    streamlit run src/data_consumption/structured_data/trafic_collisions_dashboard.py
 """
 
 import os
@@ -81,10 +81,10 @@ df_factors = load_factors()
 boroughs = sorted(df_monthly["borough"].unique().tolist())
 
 # ── Chart 1: monthly trend ────────────────────────────────────────────────────
-st.subheader("Tendencia mensual de accidentes por borough")
+st.subheader("Monthly collision trend by borough")
 
 selected_boroughs = st.multiselect(
-    "Selecciona uno o más boroughs:",
+    "Select one or more boroughs:",
     options=boroughs,
     default=boroughs,
 )
@@ -97,7 +97,7 @@ fig1 = px.line(
     y="collisions",
     color="borough",
     markers=True,
-    labels={"month": "Mes", "collisions": "Nº de accidentes", "borough": "Borough"},
+    labels={"month": "Month", "collisions": "No. of collisions", "borough": "Borough"},
     color_discrete_sequence=px.colors.qualitative.Set2,
 )
 fig1.update_layout(
@@ -114,28 +114,28 @@ st.plotly_chart(fig1, use_container_width=True)
 st.divider()
 
 # ── Chart 2: contributing factors ─────────────────────────────────────────────
-st.subheader("Top 10 factores contribuyentes a los accidentes")
+st.subheader("Top 10 contributing factors to collisions")
 
 borough_choice = st.selectbox(
-    "Filtrar por borough:",
-    options=["Todos los boroughs"] + boroughs,
+    "Filter by borough:",
+    options=["All boroughs"] + boroughs,
 )
 
-if borough_choice == "Todos los boroughs":
+if borough_choice == "All boroughs":
     subset_factors = (
         df_factors.groupby("factor", as_index=False)["collisions"]
         .sum()
         .nlargest(10, "collisions")
         .sort_values("collisions")
     )
-    chart_title = "Top 10 factores – Todos los boroughs"
+    chart_title = "Top 10 factors – All boroughs"
 else:
     subset_factors = (
         df_factors[df_factors["borough"] == borough_choice]
         .nlargest(10, "collisions")
         .sort_values("collisions")
     )
-    chart_title = f"Top 10 factores – {borough_choice}"
+    chart_title = f"Top 10 factors – {borough_choice}"
 
 fig2 = px.bar(
     subset_factors,
@@ -143,7 +143,7 @@ fig2 = px.bar(
     y="factor",
     orientation="h",
     title=chart_title,
-    labels={"collisions": "Nº de accidentes", "factor": "Factor contribuyente"},
+    labels={"collisions": "No. of collisions", "factor": "Contributing factor"},
     color="collisions",
     color_continuous_scale="Reds",
 )

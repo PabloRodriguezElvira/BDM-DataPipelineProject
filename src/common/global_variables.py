@@ -206,6 +206,9 @@ MILVUS_AUDIO_DIM        = 64    # 16 windows × 4 acoustic features
 EXPLOIT_STRUCTURED_DB    = "exploitation_zone"
 EXPLOIT_STRUCTURED_TABLE = "collisions_weather"
 
+# -------------------------- EXPLOITATION ZONE: SEMI-STRUCTURED --------------------------
+EXPLOIT_CAMERA_DB         = "exploitation_zone"
+EXPLOIT_CAMERA_COLLECTION = "camera_aggregates"
 
 # -------------------------- EXPLOITATION ZONE: UNSTRUCTURED --------------------------
 

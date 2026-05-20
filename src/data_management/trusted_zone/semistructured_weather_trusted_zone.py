@@ -21,7 +21,9 @@ Files that fail basic JSON validation are skipped for traceability.
 """
 
 import json
+from datetime import datetime
 
+from pymongo import UpdateOne
 from pyspark.sql import SparkSession, Row
 from pyspark.sql.functions import col, when, lit, upper, split, regexp_extract
 from pyspark.sql.types import (
@@ -29,8 +31,19 @@ from pyspark.sql.types import (
 )
 
 import src.common.global_variables as config
-from src.common.minio_manager import list_objects, read_object_bytes
+from src.common.minio_manager import list_objects, read_object_bytes, write_object_bytes
 from src.common.mongo_client import get_mongo_client
+
+
+def _save_skipped(df_dupes, label: str, prefix: str) -> None:
+    pandas_df = df_dupes.toPandas()
+    if pandas_df.empty:
+        return
+    csv_bytes = pandas_df.to_csv(index=False).encode("utf-8")
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    key = f"{prefix}skipped_{timestamp}.csv"
+    write_object_bytes(config.TRUSTED_BUCKET, key, csv_bytes, content_type="text/csv")
+    print(f"[{label}] Saved {len(pandas_df):,} duplicate rows → {key}")
 
 WEATHER_PREFIX = f"{config.LANDING_PERSISTENT_PATH}semi_structured/data/"
 
@@ -124,13 +137,26 @@ def process_weather_to_trusted(spark: SparkSession):
     ).drop("raw_location", "start_time", "temperature_raw", "wind_speed_raw",
            "dewpoint_raw", "precip_prob_raw", "humidity_raw")
 
-    records = [row.asDict() for row in df_transformed.collect()]
+    df_deduped = df_transformed.dropDuplicates(["station_name", "crash_date", "is_daytime"])
+    df_dupes = df_transformed.exceptAll(df_deduped)
+    _save_skipped(df_dupes, "WEATHER", config.TRUSTED_WEATHER_SKIPPED_PREFIX)
+
+    records = [row.asDict() for row in df_deduped.collect()]
     print(f"[WEATHER] Processed {len(records)} records ({skipped} files skipped).")
 
     client = get_mongo_client()
-    client[config.MONGO_DB][config.TRUSTED_WEATHER_COLLECTION].insert_many(records)
+    collection = client[config.MONGO_DB][config.TRUSTED_WEATHER_COLLECTION]
+    ops = [
+        UpdateOne(
+            {"station_name": r["station_name"], "crash_date": r["crash_date"], "is_daytime": r["is_daytime"]},
+            {"$set": r},
+            upsert=True,
+        )
+        for r in records
+    ]
+    result = collection.bulk_write(ops, ordered=False)
     client.close()
-    print(f"[WEATHER] Inserted {len(records)} records into '{config.TRUSTED_WEATHER_COLLECTION}'.")
+    print(f"[WEATHER] Upserted {result.upserted_count} new, modified {result.modified_count} existing records into '{config.TRUSTED_WEATHER_COLLECTION}'.")
 
 
 def main():

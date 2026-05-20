@@ -24,7 +24,9 @@ Accepted records are written to the MongoDB 'camera_aggregates' collection.
 """
 
 import json
+from datetime import datetime
 
+from pymongo import UpdateOne
 from pyspark.sql import SparkSession, Row
 from pyspark.sql.functions import col, when, upper, lit
 from pyspark.sql.types import (
@@ -32,8 +34,19 @@ from pyspark.sql.types import (
 )
 
 import src.common.global_variables as config
-from src.common.minio_manager import list_objects, read_object_bytes
+from src.common.minio_manager import list_objects, read_object_bytes, write_object_bytes
 from src.common.mongo_client import get_mongo_client
+
+
+def _save_skipped(df_dupes, label: str, prefix: str) -> None:
+    pandas_df = df_dupes.toPandas()
+    if pandas_df.empty:
+        return
+    csv_bytes = pandas_df.to_csv(index=False).encode("utf-8")
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    key = f"{prefix}skipped_{timestamp}.csv"
+    write_object_bytes(config.TRUSTED_BUCKET, key, csv_bytes, content_type="text/csv")
+    print(f"[{label}] Saved {len(pandas_df):,} duplicate rows → {key}")
 
 CAMERAS_PREFIX = f"{config.LANDING_PERSISTENT_PATH}unstructured/images/metadata/"
 
@@ -106,13 +119,26 @@ def process_cameras_to_trusted(spark: SparkSession):
         "camera_id_original", upper(col("camera_id"))
     ).withColumnRenamed("eRickshaw", "e-Rickshaw")
 
-    records = [row.asDict() for row in df_transformed.collect()]
+    df_deduped = df_transformed.dropDuplicates(["camera_id", "crash_date"])
+    df_dupes = df_transformed.exceptAll(df_deduped)
+    _save_skipped(df_dupes, "CAMERAS", config.TRUSTED_CAMERA_SKIPPED_PREFIX)
+
+    records = [row.asDict() for row in df_deduped.collect()]
     print(f"[CAMERAS] Processed {len(records)} records ({skipped} files skipped).")
 
     client = get_mongo_client()
-    client[config.MONGO_DB][config.TRUSTED_CAMERA_COLLECTION].insert_many(records)
+    collection = client[config.MONGO_DB][config.TRUSTED_CAMERA_COLLECTION]
+    ops = [
+        UpdateOne(
+            {"camera_id": r["camera_id"], "crash_date": r["crash_date"]},
+            {"$set": r},
+            upsert=True,
+        )
+        for r in records
+    ]
+    result = collection.bulk_write(ops, ordered=False)
     client.close()
-    print(f"[CAMERAS] Inserted {len(records)} records into '{config.TRUSTED_CAMERA_COLLECTION}'.")
+    print(f"[CAMERAS] Upserted {result.upserted_count} new, modified {result.modified_count} existing records into '{config.TRUSTED_CAMERA_COLLECTION}'.")
 
 
 def main():

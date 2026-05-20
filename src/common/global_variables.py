@@ -177,6 +177,9 @@ TRUSTED_LANDING_CAMERAS_UNSTRUCTURED_URI = f"s3a://{LANDING_BUCKET}/{LANDING_PER
 TRUSTED_WEATHER_COLLECTION = "weather_data"
 TRUSTED_CAMERA_COLLECTION  = "camera_aggregates"
 
+TRUSTED_WEATHER_SKIPPED_PREFIX = "semi_structured/weather/skipped/"
+TRUSTED_CAMERA_SKIPPED_PREFIX  = "semi_structured/camera/skipped/"
+
 # -------------------------- TRUSTED ZONE: UNSTRUCTURED --------------------------
 # Landing Zone source prefixes (inside LANDING_BUCKET)
 TRUSTED_LANDING_AUDIO_PREFIX = f"{LANDING_PERSISTENT_PATH}unstructured/audio/data/"

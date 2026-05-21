@@ -184,12 +184,20 @@ TRUSTED_CAMERA_SKIPPED_PREFIX  = "semi_structured/camera/skipped/"
 # Landing Zone source prefixes (inside LANDING_BUCKET)
 TRUSTED_LANDING_AUDIO_PREFIX = f"{LANDING_PERSISTENT_PATH}unstructured/audio/data/"
 TRUSTED_LANDING_TEXT_PREFIX  = f"{LANDING_PERSISTENT_PATH}unstructured/text/data/"
+# Landing Zone metadata JSON prefixes (one JSON per file, written at ingestion)
+LANDING_TEXT_METADATA_PREFIX  = f"{LANDING_PERSISTENT_PATH}unstructured/text/metadata/"
+LANDING_AUDIO_METADATA_PREFIX = f"{LANDING_PERSISTENT_PATH}unstructured/audio/metadata/"
 
 # Trusted Zone destination prefixes (inside TRUSTED_BUCKET)
 TRUSTED_AUDIO_PREFIX         = f"{TRUSTED_UNSTRUCTURED_PATH}audio/data/"
 TRUSTED_TEXT_PREFIX          = f"{TRUSTED_UNSTRUCTURED_PATH}text/data/"
 TRUSTED_AUDIO_SKIPPED_PREFIX = f"{TRUSTED_UNSTRUCTURED_PATH}audio/skipped/"
 TRUSTED_TEXT_SKIPPED_PREFIX  = f"{TRUSTED_UNSTRUCTURED_PATH}text/skipped/"
+# Trusted Zone metadata paths (enriched landing metadata, one JSON + Delta per file)
+TRUSTED_TEXT_METADATA_PREFIX  = f"{TRUSTED_UNSTRUCTURED_PATH}text/metadata/"
+TRUSTED_AUDIO_METADATA_PREFIX = f"{TRUSTED_UNSTRUCTURED_PATH}audio/metadata/"
+TRUSTED_TEXT_DELTA_URI        = f"s3://{TRUSTED_BUCKET}/unstructured/text/delta/"
+TRUSTED_AUDIO_DELTA_URI       = f"s3://{TRUSTED_BUCKET}/unstructured/audio/delta/"
 
 # Audio cleaning parameters
 TRUSTED_AUDIO_TARGET_SAMPLE_RATE      = 16_000  
@@ -222,6 +230,11 @@ EXPLOIT_TRUSTED_AUDIO_PREFIX = TRUSTED_AUDIO_PREFIX
 # Destination prefixes (inside EXPLOITATION_BUCKET)
 EXPLOIT_TEXT_PREFIX  = "unstructured/text/data/"
 EXPLOIT_AUDIO_PREFIX = "unstructured/audio/data/"
+# Exploitation Zone metadata paths (enriched trusted metadata, one JSON + Delta per file)
+EXPLOIT_TEXT_METADATA_PREFIX  = "unstructured/text/metadata/"
+EXPLOIT_AUDIO_METADATA_PREFIX = "unstructured/audio/metadata/"
+EXPLOIT_TEXT_DELTA_URI        = f"s3://{EXPLOITATION_BUCKET}/unstructured/text/delta/"
+EXPLOIT_AUDIO_DELTA_URI       = f"s3://{EXPLOITATION_BUCKET}/unstructured/audio/delta/"
 
 # Airflow DAG
 AIRFLOW_EZ_DAG_ID          = "exploitation_zone_unstructured_pipeline"

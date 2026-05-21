@@ -39,8 +39,104 @@ from pyspark.sql.types import (
     BinaryType, StringType, StructField, StructType,
 )
 
+import json
+from datetime import datetime, timezone
+
+import pandas as pd
+import pyarrow as pa
+from deltalake.writer import write_deltalake
+
 import src.common.global_variables as config
 from src.common.minio_manager import list_objects, read_object_bytes, write_object_bytes
+from src.data_management.landing_zone.process_metadata_to_delta import (
+    _flatten_metadata_payload,
+    _cast_null_columns,
+)
+
+
+# ── Metadata helpers (inline) ─────────────────────────────────────────────────
+
+def _delta_storage_opts() -> dict:
+    return {
+        "AWS_ACCESS_KEY_ID":          config.MINIO_ROOT_USER,
+        "AWS_SECRET_ACCESS_KEY":      config.MINIO_ROOT_PASSWORD,
+        "AWS_ENDPOINT_URL":           config.MINIO_ENDPOINT_URL,
+        "AWS_REGION":                 "us-east-1",
+        "AWS_ALLOW_HTTP":             "true",
+        "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
+    }
+
+
+def _append_to_delta(uri: str, flat_row: dict) -> None:
+    """Append a single flattened metadata row to a Delta Lake table."""
+    df = pd.DataFrame([flat_row]).convert_dtypes()
+    arrow_table = _cast_null_columns(pa.Table.from_pandas(df, preserve_index=False))
+    try:
+        write_deltalake(
+            uri, arrow_table, mode="append", schema_mode="merge",
+            engine="rust", storage_options=_delta_storage_opts(),
+        )
+    except TypeError:
+        write_deltalake(uri, arrow_table, mode="append", storage_options=_delta_storage_opts())
+
+
+def _write_trusted_metadata(
+    filename: str,
+    data_type: str,
+    was_accepted: bool,
+    skip_reason: str | None,
+    transformations: list[str],
+) -> None:
+    """
+    Read the per-file landing metadata JSON from MinIO, enrich it with
+    Trusted Zone processing information, then:
+      1. Write the enriched JSON back to the Trusted Zone MinIO bucket.
+      2. Append a flattened row to the Trusted Zone Delta table.
+
+    Paths used:
+      Landing JSON  : LANDING_BUCKET / LANDING_{TEXT|AUDIO}_METADATA_PREFIX / metadata_{stem}.json
+      Trusted JSON  : TRUSTED_BUCKET / TRUSTED_{TEXT|AUDIO}_METADATA_PREFIX / metadata_{stem}.json
+      Trusted Delta : TRUSTED_{TEXT|AUDIO}_DELTA_URI
+    """
+    stem = filename.rsplit(".", 1)[0]
+    meta_filename = f"metadata_{stem}.json"
+
+    if data_type == "text":
+        landing_meta_prefix  = config.LANDING_TEXT_METADATA_PREFIX
+        trusted_meta_prefix  = config.TRUSTED_TEXT_METADATA_PREFIX
+        trusted_delta_uri    = config.TRUSTED_TEXT_DELTA_URI
+        trusted_data_prefix  = config.TRUSTED_TEXT_PREFIX
+    else:
+        landing_meta_prefix  = config.LANDING_AUDIO_METADATA_PREFIX
+        trusted_meta_prefix  = config.TRUSTED_AUDIO_METADATA_PREFIX
+        trusted_delta_uri    = config.TRUSTED_AUDIO_DELTA_URI
+        trusted_data_prefix  = config.TRUSTED_AUDIO_PREFIX
+
+    # Read landing metadata JSON (best-effort; empty dict if not found)
+    raw_meta = read_object_bytes(config.LANDING_BUCKET, landing_meta_prefix + meta_filename)
+    landing_meta: dict = json.loads(raw_meta.decode("utf-8")) if raw_meta else {}
+
+    # Enrich with Trusted Zone processing info
+    landing_meta["trusted_zone"] = {
+        "processed_at_utc":      datetime.now(timezone.utc).isoformat(),
+        "was_accepted":          was_accepted,
+        "skip_reason":           skip_reason,
+        "transformations_applied": transformations,
+        "trusted_data_path":     f"{trusted_data_prefix}{filename}" if was_accepted else None,
+        "trusted_metadata_path": f"{trusted_meta_prefix}{meta_filename}",
+    }
+
+    # 1) Write enriched JSON to Trusted Zone MinIO
+    meta_bytes = json.dumps(landing_meta, indent=2, ensure_ascii=False).encode("utf-8")
+    write_object_bytes(
+        config.TRUSTED_BUCKET,
+        trusted_meta_prefix + meta_filename,
+        meta_bytes,
+        "application/json",
+    )
+
+    # 2) Append to Trusted Zone Delta table
+    _append_to_delta(trusted_delta_uri, _flatten_metadata_payload(landing_meta))
 
 
 def clean_text(raw: bytes, filename: str) -> tuple[bytes | None, str | None]:
@@ -179,6 +275,27 @@ def process_text_files(spark: SparkSession):
         )
         print(f"[TEXT][SKIP] {row['filename']} — {row['skip_reason']}")
 
+    # ── Write enriched metadata for each file to Trusted Zone (JSON + Delta) ─
+    _TEXT_TRANSFORMATIONS = [
+        "encoding_standardization_utf8",
+        "lowercase_normalization",
+        "whitespace_normalization",
+        "consecutive_blank_line_collapse",
+        "empty_file_removal",
+    ]
+    for row in accepted:
+        _write_trusted_metadata(
+            filename=row["filename"], data_type="text",
+            was_accepted=True, skip_reason=None,
+            transformations=_TEXT_TRANSFORMATIONS,
+        )
+    for row in skipped:
+        _write_trusted_metadata(
+            filename=row["filename"], data_type="text",
+            was_accepted=False, skip_reason=row["skip_reason"],
+            transformations=[],
+        )
+    print(f"[TEXT] Metadata written for {len(accepted) + len(skipped)} file(s).")
     print("[TEXT] Done.")
 
 
@@ -239,6 +356,27 @@ def process_audio_files(spark: SparkSession):
         )
         print(f"[AUDIO][SKIP] {row['filename']} — {row['skip_reason']}")
 
+    # ── Write enriched metadata for each file to Trusted Zone (JSON + Delta) ─
+    _AUDIO_TRANSFORMATIONS = [
+        "corrupted_file_removal",
+        "mono_mixdown",
+        f"resample_to_{config.TRUSTED_AUDIO_TARGET_SAMPLE_RATE}hz",
+        "pcm_16bit_normalization",
+        f"min_duration_{config.TRUSTED_AUDIO_MIN_DURATION_SECONDS}s_enforcement",
+    ]
+    for row in accepted:
+        _write_trusted_metadata(
+            filename=row["filename"], data_type="audio",
+            was_accepted=True, skip_reason=None,
+            transformations=_AUDIO_TRANSFORMATIONS,
+        )
+    for row in skipped:
+        _write_trusted_metadata(
+            filename=row["filename"], data_type="audio",
+            was_accepted=False, skip_reason=row["skip_reason"],
+            transformations=[],
+        )
+    print(f"[AUDIO] Metadata written for {len(accepted) + len(skipped)} file(s).")
     print("[AUDIO] Done.")
 
 

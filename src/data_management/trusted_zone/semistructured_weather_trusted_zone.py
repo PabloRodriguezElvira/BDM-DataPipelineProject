@@ -136,9 +136,39 @@ def process_weather_to_trusted(spark: SparkSession):
         "humidity", col("humidity_raw")
     ).drop("raw_location", "start_time", "temperature_raw", "wind_speed_raw",
            "dewpoint_raw", "precip_prob_raw", "humidity_raw")
+    
+    # DATA GOVERNANCE CONSTRAINTS (DATA QUALITY):
+    df_validated = df_transformed.withColumn(
+        "is_valid",
+        # Extreme temperatures (thresholds set for Celsius)
+        when((col("temperature") > 40) | (col("temperature") < -30), lit(False))
+        # Invalid percentages (humidity and precipitation probability must be 0-100)
+        .when((col("humidity") < 0) | (col("humidity") > 100), lit(False))
+        .when((col("precip_prob") < 0) | (col("precip_prob") > 100), lit(False))
+        # Negative wind speed
+        .when(col("wind_speed_mph") < 0, lit(False))
+        # Meteorological inconsistency (dew point cannot exceed air temperature)
+        .when(col("dewpoint_celsius") > col("temperature"), lit(False))
+        .otherwise(lit(True))
+    ).withColumn(
+        "rejection_reason",
+        when((col("temperature") > 40) | (col("temperature") < -30), lit("Gov: Temp out of bounds"))
+        .when((col("humidity") < 0) | (col("humidity") > 100), lit("Gov: Humidity must be 0-100"))
+        .when((col("precip_prob") < 0) | (col("precip_prob") > 100), lit("Gov: Precip prob must be 0-100"))
+        .when(col("wind_speed_mph") < 0, lit("Gov: Negative wind speed"))
+        .when(col("dewpoint_celsius") > col("temperature"), lit("Gov: Dewpoint exceeds temperature"))
+        .otherwise(lit("Valid"))
+    )
 
-    df_deduped = df_transformed.dropDuplicates(["station_name", "crash_date", "is_daytime"])
-    df_dupes = df_transformed.exceptAll(df_deduped)
+    # Separate clean and wrong data:
+    df_clean = df_validated.filter(col("is_valid") == True).drop("is_valid", "rejection_reason")# we drop the unnecessary columns
+    df_rejected = df_validated.filter(col("is_valid") == False)
+
+    # Save the lineage of the rejected records using the anaomalies suffix
+    _save_skipped(df_rejected, "WEATHER_GOVERNANCE_REJECTS", f"{config.TRUSTED_WEATHER_SKIPPED_PREFIX}anomalies_")
+
+    df_deduped = df_clean.dropDuplicates(["station_name", "crash_date", "is_daytime"])
+    df_dupes = df_clean.exceptAll(df_deduped)
     _save_skipped(df_dupes, "WEATHER", config.TRUSTED_WEATHER_SKIPPED_PREFIX)
 
     records = [row.asDict() for row in df_deduped.collect()]

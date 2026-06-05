@@ -6,8 +6,7 @@ the Landing Zone persistent storage (MinIO). It handles a hierarchical
 directory structure (Nd_O, SW_O, NT4, NT2, etc.), applies schema standardization
 and data cleansing using Spark, and stores the results in MongoDB.
 
-Transformations applied
------------------------
+Transformations applied:
 Camera Metadata files (JSON):
   - Recursive Ingestion: Automatically scan and process multiple camera
     subdirectories for unified processing.
@@ -119,8 +118,36 @@ def process_cameras_to_trusted(spark: SparkSession):
         "camera_id_original", upper(col("camera_id"))
     ).withColumnRenamed("eRickshaw", "e-Rickshaw")
 
-    df_deduped = df_transformed.dropDuplicates(["camera_id", "crash_date"])
-    df_dupes = df_transformed.exceptAll(df_deduped)
+    # DATA GOVERNANCE CONSTRAINTS (DATA QUALITY):
+    df_validated = df_transformed.withColumn(
+        "is_valid",
+        # Cannot have negative detections
+        when((col("MotorBike") < 0) | (col("Pedestrian") < 0) | (col("Bike") < 0) | 
+              (col("LMV") < 0) | (col("Auto") < 0) | (col("LCV") < 0) | (col("e-Rickshaw") < 0), lit(False))
+        # Extreme false positive threshold (e.g., >100 cars per single frame is physically impossible)
+        .when(col("LMV") > 100, lit(False))
+        .otherwise(lit(True))
+    ).withColumn(
+        "rejection_reason",
+        # Cannot have negative detections
+        when((col("MotorBike") < 0) | (col("Pedestrian") < 0) | (col("Bike") < 0) | 
+              (col("LMV") < 0) | (col("Auto") < 0) | (col("LCV") < 0) | (col("e-Rickshaw") < 0), lit("Gov: Negative vehicle detection count"))
+        # Extreme false positive threshold
+        .when(col("LMV") > 100, lit("Gov: Anomalous CV detection (Over 100 LMV per frame)"))
+        .otherwise(lit("Valid"))
+    )
+
+    # Separating validated data and invalid
+    df_clean = df_validated.filter(col("is_valid") == True).drop("is_valid", "rejection_reason")
+    df_rejected = df_validated.filter(col("is_valid") == False)
+
+    # Save the lineage rejected records with the suffix anomalies
+    _save_skipped(df_rejected, "CAMERA_GOVERNANCE_REJECTS", f"{config.TRUSTED_CAMERA_SKIPPED_PREFIX}anomalies_")
+
+    # We look for duplicates and we add them into skipped folder
+    df_deduped = df_clean.dropDuplicates(["camera_id", "crash_date"])
+    df_dupes = df_clean.exceptAll(df_deduped)
+    
     _save_skipped(df_dupes, "CAMERAS", config.TRUSTED_CAMERA_SKIPPED_PREFIX)
 
     records = [row.asDict() for row in df_deduped.collect()]

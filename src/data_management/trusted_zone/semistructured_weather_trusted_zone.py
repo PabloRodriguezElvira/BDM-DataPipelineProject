@@ -140,8 +140,8 @@ def process_weather_to_trusted(spark: SparkSession):
     # DATA GOVERNANCE CONSTRAINTS (DATA QUALITY):
     df_validated = df_transformed.withColumn(
         "is_valid",
-        # Extreme temperatures (thresholds set for Celsius)
-        when((col("temperature") > 40) | (col("temperature") < -30), lit(False))
+        # Extreme temperatures — NWS API reports in Fahrenheit; thresholds cover NYC's historical extremes
+        when((col("temperature") > 110) | (col("temperature") < -22), lit(False))
         # Invalid percentages (humidity and precipitation probability must be 0-100)
         .when((col("humidity") < 0) | (col("humidity") > 100), lit(False))
         .when((col("precip_prob") < 0) | (col("precip_prob") > 100), lit(False))
@@ -152,7 +152,7 @@ def process_weather_to_trusted(spark: SparkSession):
         .otherwise(lit(True))
     ).withColumn(
         "rejection_reason",
-        when((col("temperature") > 40) | (col("temperature") < -30), lit("Gov: Temp out of bounds"))
+        when((col("temperature") > 110) | (col("temperature") < -22), lit("Gov: Temp out of bounds [-22, 110] °F"))
         .when((col("humidity") < 0) | (col("humidity") > 100), lit("Gov: Humidity must be 0-100"))
         .when((col("precip_prob") < 0) | (col("precip_prob") > 100), lit("Gov: Precip prob must be 0-100"))
         .when(col("wind_speed_mph") < 0, lit("Gov: Negative wind speed"))

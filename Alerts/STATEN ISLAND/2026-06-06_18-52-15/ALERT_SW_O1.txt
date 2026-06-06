@@ -1,0 +1,10 @@
+---------------------------------------------------
+[CRITICAL TRAFFIC CONGESTION ALERT]
+---------------------------------------------------
+Timestamp : 2026-06-06 18:52:15
+Borough   : STATEN ISLAND
+Street    : Victory Boulevard
+Camera ID : SW_O1
+Details   : Heavy traffic detected. A total of 20 vehicles 
+            were counted in the recent 15-second window.
+---------------------------------------------------

@@ -1,0 +1,10 @@
+---------------------------------------------------
+[CRITICAL TRAFFIC CONGESTION ALERT]
+---------------------------------------------------
+Timestamp : 2026-06-06 18:40:00
+Borough   : BROOKLYN
+Street    : Bedford Avenue
+Camera ID : NT2_O1
+Details   : Heavy traffic detected. A total of 21 vehicles 
+            were counted in the recent 15-second window.
+---------------------------------------------------

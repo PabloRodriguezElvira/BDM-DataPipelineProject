@@ -120,8 +120,8 @@ def process_and_save_alerts(df_batch, batch_id):
         # Format time safely for folder names (no colons or spaces)
         safe_time = alert_time.replace(" ", "_").replace(":", "-")
         
-        # Create nested folder structure: Alerts/Borough/Time
-        alert_dir = os.path.join("Alerts", borough, safe_time)
+        # Create nested folder structure inside the project directory
+        alert_dir = os.path.join("/app", "Alerts", borough, safe_time)
         os.makedirs(alert_dir, exist_ok=True)
         
         # 1. Save the .txt alert file
@@ -188,7 +188,7 @@ def run_streaming_alerts():
         .format("kafka") \
         .option("kafka.bootstrap.servers", config.KAFKA_SERVER) \
         .option("subscribe", config.UNSTRUCTURED_IMAGE_TOPIC_NAME) \
-        .option("startingOffsets", "latest") \
+        .option("startingOffsets", "earliest") \
         .option("maxOffsetsPerTrigger", 10) \
         .load()
 
@@ -248,19 +248,15 @@ def run_streaming_alerts():
     "Press Ctrl + C to stop")
 
     # ONE SINGLE UNIFIED QUERY USING FOREACHBATCH
+    # trigger(availableNow=True) processes all messages currently in the topic and stops automatically,
+    # making this script suitable for batch execution inside an Airflow task.
     query = df_alerts.writeStream \
         .foreachBatch(process_and_save_alerts) \
         .outputMode("update") \
+        .trigger(availableNow=True) \
         .start()
 
-    # Keep streaming alive
-    try:
-        import time
-        while query.isActive:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Stopping streaming query manually.")
-        query.stop()
+    query.awaitTermination()
 
 if __name__ == "__main__":
     run_streaming_alerts()

@@ -60,3 +60,13 @@ with DAG(
             """
         ),
     )
+
+    run_cv_alerts = BashOperator(
+        task_id="run_cv_alerts",
+        bash_command=(
+            f"cd {config.PROJECT_ROOT} && "
+            f"{config.PYTHON_BIN} -m src.data_consumption.unstructured_data.spark_streaming_cv_alerts"
+        ),
+    )
+
+    run_image_stream >> run_cv_alerts

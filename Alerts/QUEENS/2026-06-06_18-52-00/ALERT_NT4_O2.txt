@@ -1,0 +1,10 @@
+---------------------------------------------------
+[CRITICAL TRAFFIC CONGESTION ALERT]
+---------------------------------------------------
+Timestamp : 2026-06-06 18:52:00
+Borough   : QUEENS
+Street    : Northern Boulevard
+Camera ID : NT4_O2
+Details   : Heavy traffic detected. A total of 21 vehicles 
+            were counted in the recent 15-second window.
+---------------------------------------------------

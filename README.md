@@ -190,5 +190,5 @@ Data quality validation happens in the Trusted Zone before data reaches the Expl
 
 - `.env` is only needed for ingestion flows that require Kaggle credentials (`KAGGLE_USERNAME`, `KAGGLE_KEY`)
 - Shared runtime dependencies live in `requirements.txt`; Airflow-only dependencies in `requirements-airflow.txt`
-- For the Kafka image streaming workflow, place test images in `downloaded_data/unstructured/images` (10 folders, ~30 images each)
+- For the Kafka image streaming workflow, we have put test images in `downloaded_data/unstructured/images` (10 folders, ~30 images each)
 - Full image dataset: `https://github.com/Math-ML-X/TrafficCAM/blob/main/TrafficCAM-download.md`

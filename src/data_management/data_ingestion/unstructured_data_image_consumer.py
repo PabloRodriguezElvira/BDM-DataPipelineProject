@@ -31,6 +31,8 @@ def consume_and_aggregate():
         return
 
     state = {}
+    _IDLE_TIMEOUT_S = 30  # exit if no messages received for this many seconds
+    last_message_time = time.time()
 
     print(f"STATUS: Consumer active. Connected to Kafka at {config.KAFKA_SERVER}")
     print(f"ACTION: Reporting status every {config.UNSTRUCTURED_IMAGE_LOG_INTERVAL}s. Press Ctrl+C to stop.\n")
@@ -42,8 +44,13 @@ def consume_and_aggregate():
             current_time = time.time()
             today = datetime.now().strftime("%Y-%m-%d")
 
+            if current_time - last_message_time > _IDLE_TIMEOUT_S:
+                print(f"STATUS: No messages for {_IDLE_TIMEOUT_S}s. Closing consumer.")
+                break
+
             # Process incoming messages
             if records:
+                last_message_time = current_time
                 for topic_partition, messages in records.items():
                     for message in messages:
                         data = message.value

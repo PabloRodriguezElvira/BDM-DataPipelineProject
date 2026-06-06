@@ -254,6 +254,7 @@ def run_streaming_alerts():
         .foreachBatch(process_and_save_alerts) \
         .outputMode("update") \
         .trigger(availableNow=True) \
+        .option("checkpointLocation", "/app/spark_checkpoints/cv_alerts") \
         .start()
 
     query.awaitTermination()

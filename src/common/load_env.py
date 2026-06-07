@@ -1,3 +1,10 @@
+"""
+.env file loader.
+
+Reads KEY=VALUE pairs from a .env file and injects them into os.environ,
+skipping any keys that are already present in the environment.
+"""
+
 import os
 from pathlib import Path
 

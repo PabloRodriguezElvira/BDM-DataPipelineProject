@@ -97,6 +97,7 @@ def _load_raw_rows(keys: list[str]) -> tuple[list[Row], int]:
 
 
 def process_cameras_to_trusted(spark: SparkSession):
+    """Ingest, clean, validate, and upsert camera metadata records into MongoDB."""
     # Scan and read raw JSON files list from Landing Zone in MinIO
     print(f"[CAMERAS] Scanning MinIO path: {CAMERAS_PREFIX}")
     keys = [k for k in list_objects(config.LANDING_BUCKET, CAMERAS_PREFIX) if k.endswith(".json")]
@@ -186,6 +187,7 @@ def process_cameras_to_trusted(spark: SparkSession):
 
 
 def main():
+    """Initialize Spark and run the camera metadata trusted zone pipeline."""
     spark = (
         SparkSession.builder
         .appName("TrustedZone-Camera-Metadata")

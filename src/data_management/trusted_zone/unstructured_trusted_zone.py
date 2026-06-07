@@ -1,3 +1,34 @@
+"""
+Trusted Zone pipeline for unstructured data (text articles and 911 audio).
+
+Reads cleaned text (.txt) and audio (.wav) files from the Landing Zone persistent
+storage in MinIO, applies normalization and quality filters using PySpark, and
+writes accepted files to the Trusted Zone bucket. Rejected files are written to
+a separate skipped/ path for traceability.
+
+Transformations applied
+-----------------------
+Text files:
+  - Encoding normalization to UTF-8
+  - Lowercase normalization
+  - Whitespace and consecutive blank-line collapsing
+  - Empty file removal
+
+Audio (WAV) files:
+  - Corrupted file removal
+  - Stereo-to-mono mixdown
+  - Resampling to 16 kHz
+  - PCM 16-bit normalization
+  - Short file removal (below minimum duration threshold)
+
+Per-file metadata is enriched with Trusted Zone processing info and written
+as both a JSON object and a Delta Lake entry in MinIO.
+
+Run:
+    docker compose exec app python -m \
+        src.data_management.trusted_zone.unstructured_trusted_zone
+"""
+
 import io
 import audioop
 import re
@@ -27,6 +58,7 @@ from src.data_management.landing_zone.process_metadata_to_delta import (
 # ── Metadata helpers (inline) ─────────────────────────────────────────────────
 
 def _delta_storage_opts() -> dict:
+    """Return MinIO storage options for Delta Lake writes."""
     return {
         "AWS_ACCESS_KEY_ID":          config.MINIO_ROOT_USER,
         "AWS_SECRET_ACCESS_KEY":      config.MINIO_ROOT_PASSWORD,
@@ -184,6 +216,7 @@ def clean_audio(raw: bytes, filename: str) -> tuple[bytes | None, str | None]:
 
 
 def process_text_files(spark: SparkSession):
+    """Clean and write text files from Landing Zone to Trusted Zone."""
     print("[TEXT] Listing Landing Zone objects...")
     keys = list_objects(config.LANDING_BUCKET, config.TRUSTED_LANDING_TEXT_PREFIX)
     if not keys:
@@ -265,6 +298,7 @@ def process_text_files(spark: SparkSession):
 
 
 def process_audio_files(spark: SparkSession):
+    """Clean and write audio files from Landing Zone to Trusted Zone."""
     print("[AUDIO] Listing Landing Zone objects...")
     keys = list_objects(config.LANDING_BUCKET, config.TRUSTED_LANDING_AUDIO_PREFIX)
     if not keys:
@@ -346,6 +380,7 @@ def process_audio_files(spark: SparkSession):
 
 
 def main():
+    """Initialize Spark and run text and audio trusted zone pipelines."""
     spark = (
         SparkSession.builder
         .appName("TrustedZone-Unstructured")

@@ -1,3 +1,16 @@
+"""
+Kafka image producer for the real-time traffic stream.
+
+Streams enriched image sequences with dynamic vehicle-count metadata by
+reading local camera folders in round-robin order. Handles continuous video
+sequences split across multiple sub-folders, reloading detection metadata
+from JSON on every folder switch.
+
+Run (inside Docker):
+    docker compose exec app python -m \
+        src.data_management.data_ingestion.unstructured_data_image_producer
+"""
+
 import os
 import time
 import json
@@ -7,13 +20,6 @@ from pathlib import Path
 
 from kafka import KafkaProducer
 import src.common.global_variables as config
-
-"""
-Traffic Data Producer (Round Robin + Sequential Continuity)
-Description: Streams enriched image sequences with dynamic metadata.
-Handles continuous video sequences split across multiple folders,
-updating metadata from JSON on every folder switch.
-"""
 
 def get_clean_camera_id(folder_name):
     """

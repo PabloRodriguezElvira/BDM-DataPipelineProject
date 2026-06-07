@@ -213,6 +213,7 @@ def process_weather_to_trusted(spark: SparkSession):
 
 
 def main():
+    """Initialize Spark and run the weather data trusted zone pipeline."""
     spark = (
         SparkSession.builder
         .appName("TrustedZone-Weather")

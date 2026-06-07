@@ -1,3 +1,17 @@
+"""
+Hot-path Spark Streaming pipeline for real-time traffic congestion alerts.
+
+Consumes image frames from the Kafka traffic-images topic, runs MobileNet-SSD
+object detection on each frame via a Spark UDF, and groups detections into
+15-second tumbling windows. Any window where the maximum vehicle count is ≥ 20
+triggers a congestion alert written as a .txt report and a .jpg image to a
+nested Alerts/<Borough>/<Time>/ directory.
+
+Run (inside Docker, with the Kafka producer already running):
+    docker compose exec app python -m \
+        src.data_consumption.unstructured_data.spark_streaming_cv_alerts
+"""
+
 import base64
 import numpy as np
 import cv2
@@ -159,6 +173,7 @@ def process_and_save_alerts(df_batch, batch_id):
 
 # Spark streaming pipeline 
 def run_streaming_alerts():
+    """Start the Spark Structured Streaming pipeline and block until termination."""
     print("Starting Spark Streaming (Hot Path) with MobileNet-SSD AI and Time Windows.")
 
     # 1. THE ENGINE: Initialize Spark (2GB RAM to prevent Docker crashes)

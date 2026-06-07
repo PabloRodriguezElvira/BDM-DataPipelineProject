@@ -1,3 +1,15 @@
+"""
+Kafka image consumer for the real-time traffic stream.
+
+Reads image frames published by the producer from the Kafka traffic-images
+topic, aggregates vehicle detection counts per camera over a fixed time
+window, and uploads the resulting JSON metadata reports directly to MinIO.
+
+Run (inside Docker):
+    docker compose exec app python -m \
+        src.data_management.data_ingestion.unstructured_data_image_consumer
+"""
+
 import os
 import json
 import base64

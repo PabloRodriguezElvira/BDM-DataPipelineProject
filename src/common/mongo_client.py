@@ -1,3 +1,10 @@
+"""
+MongoDB client factory.
+
+Returns a connected PyMongo client using credentials from global_variables.py.
+Raises an exception if the server is not reachable within the timeout window.
+"""
+
 from pymongo import MongoClient
 import src.common.global_variables as config
 import logging
@@ -5,6 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def get_mongo_client() -> MongoClient:
+    """Return a connected MongoDB client, raising on connection failure."""
     mongo_uri = f"mongodb://{config.MONGO_USER}:{config.MONGO_PASSWORD}@{config.MONGO_HOST}:{config.MONGO_PORT}/"
     try:
         client = MongoClient(

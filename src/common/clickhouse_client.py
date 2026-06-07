@@ -1,8 +1,15 @@
+"""
+ClickHouse client factory.
+
+Returns a connected clickhouse-connect client using credentials from global_variables.py.
+"""
+
 import clickhouse_connect
 import src.common.global_variables as config
 
 
 def get_clickhouse_client() -> clickhouse_connect.driver.Client:
+    """Return a connected ClickHouse client using credentials from config."""
     return clickhouse_connect.get_client(
         host=config.CLICKHOUSE_HOST,
         port=config.CLICKHOUSE_HTTP_PORT,

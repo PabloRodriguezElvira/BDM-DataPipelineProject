@@ -1,3 +1,7 @@
+"""
+Thin wrapper around tqdm for consistent progress reporting across the pipeline.
+"""
+
 from typing import Optional
 from tqdm import tqdm
 
@@ -29,6 +33,7 @@ class ProgressBar:
         )
 
     def __enter__(self):
+        """Return self to support use as a context manager."""
         return self
 
     def set_meta(self, meta=None, **kwargs):
@@ -53,16 +58,21 @@ class ProgressBar:
             self._progress_bar.set_description(f"Uploading {object_name}", refresh=False)
 
     def update(self, bytes_amount):
+        """Advance the progress bar by the given amount."""
         self._progress_bar.update(bytes_amount)
 
     def set_description(self, description, refresh):
+        """Update the label shown next to the progress bar."""
         self._progress_bar.set_description(description, refresh=refresh)
 
     def write(self, message):
+        """Print a message above the progress bar without disrupting it."""
         tqdm.write(message)
 
     def close(self):
+        """Finalize and close the progress bar."""
         self._progress_bar.close()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Close the progress bar on context-manager exit."""
         self.close()

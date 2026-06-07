@@ -1,33 +1,3 @@
-"""
-Trusted Zone pipeline for unstructured data (audio and text).
-
-Reads audio (.wav) and text (.txt) files from the Landing Zone persistent storage
-in MinIO, applies information-preserving cleaning transformations using Spark,
-and writes the results to the Trusted Zone bucket in MinIO.
-
-Transformations applied
------------------------
-Text files:
-  - Detect and skip corrupted / unreadable files
-  - Standardize encoding to UTF-8
-  - Strip leading/trailing whitespace per line
-  - Collapse multiple consecutive blank lines into one
-  - Normalize internal whitespace (tabs -> spaces, multiple spaces -> single space)
-  - Convert content to lowercase
-
-Audio files (.wav):
-  - Detect and skip corrupted files (malformed RIFF header)
-  - Skip clips shorter than TRUSTED_AUDIO_MIN_DURATION_SECONDS
-  - Convert to 16-bit PCM if needed
-  - Mix down to mono if multi-channel
-  - Resample to TRUSTED_AUDIO_TARGET_SAMPLE_RATE if needed
-  - Re-encode as standard WAV
-
-Accepted files are written to trusted-zone/unstructured/{audio|text}/data/.
-Skipped files are kept in .../skipped/ for traceability.
-
-"""
-
 import io
 import audioop
 import re
@@ -92,11 +62,6 @@ def _write_trusted_metadata(
     Trusted Zone processing information, then:
       1. Write the enriched JSON back to the Trusted Zone MinIO bucket.
       2. Append a flattened row to the Trusted Zone Delta table.
-
-    Paths used:
-      Landing JSON  : LANDING_BUCKET / LANDING_{TEXT|AUDIO}_METADATA_PREFIX / metadata_{stem}.json
-      Trusted JSON  : TRUSTED_BUCKET / TRUSTED_{TEXT|AUDIO}_METADATA_PREFIX / metadata_{stem}.json
-      Trusted Delta : TRUSTED_{TEXT|AUDIO}_DELTA_URI
     """
     stem = filename.rsplit(".", 1)[0]
     meta_filename = f"metadata_{stem}.json"

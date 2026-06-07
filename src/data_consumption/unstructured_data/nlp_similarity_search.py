@@ -1,28 +1,4 @@
 """
-Data Consumption — NLP Similarity Search (Text + Audio)
-========================================================
-
-Queries the Milvus vector database for documents semantically similar to a
-given text query, then fetches the matching raw files from the Exploitation Zone
-MinIO bucket to deliver full content to the caller.
-
-This task directly consumes two assets produced by the Exploitation Zone:
-  1. Milvus collections  ("text_embeddings", "audio_embeddings")
-     — used for fast approximate nearest-neighbour search.
-  2. MinIO exploitation-zone bucket (unstructured/text/ and unstructured/audio/)
-     — used to retrieve the actual file bytes for the top-K matches.
-
-How it works
-------------
-1. Encode the user query with the same lightweight hashing-trick vectorizer
-   used during ingestion (128-dim for text, same hash function).
-2. Search Milvus for the K nearest vectors using cosine similarity.
-3. Fetch each matched file from MinIO and return its content.
-
-Since the project focuses on the pipeline rather than retrieval quality, this
-implementation is intentionally minimal: the hashing vectorizer is deterministic
-and dependency-free, so results are reproducible without any ML model downloads.
-
 Usage
 -----
     # Run interactively (default query, K=5):
@@ -196,9 +172,7 @@ def search_audio(query: str, top_k: int = 5) -> list[dict]:
     """
     End-to-end audio similarity search using a text query.
 
-    The query is embedded with the same hashing trick (dim=64 this time) and
-    compared against the acoustic-statistics embeddings in Milvus. The WAV
-    metadata (duration, sample rate) of the matched clips is returned along with
+    The WAV metadata (duration, sample rate) of the matched clips is returned along with
     the raw file size fetched from MinIO.
     """
     milvus_connect()

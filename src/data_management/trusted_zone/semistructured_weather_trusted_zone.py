@@ -18,6 +18,9 @@ Weather JSON files:
 
 Processed records are written to the MongoDB 'weather_data' collection.
 Files that fail basic JSON validation are skipped for traceability.
+
+Also handles duplicates storaging deduplicates in MinIO and. It also storages raws that do not
+fulfill the Data Quality constraints for Data Governance
 """
 
 import json
@@ -36,6 +39,10 @@ from src.common.mongo_client import get_mongo_client
 
 
 def _save_skipped(df_dupes, label: str, prefix: str) -> None:
+    """
+    Saves rows that failed quality checks or were duplicates into a csv file in MinIO.
+    This helps us keep track of 'bad data' for future analysis or debugging.
+    """
     pandas_df = df_dupes.toPandas()
     if pandas_df.empty:
         return
@@ -49,7 +56,11 @@ WEATHER_PREFIX = f"{config.LANDING_PERSISTENT_PATH}semi_structured/data/"
 
 
 def _load_raw_rows(keys: list[str]) -> tuple[list[Row], int]:
-    """Read JSON files from MinIO and return one Row per forecast period."""
+    """
+    Parses raw weather JSON files from the landing zone in MiniO, extracting relevant forecast 
+    periods and flattening them into a list of Spark Rows for processing. 
+    It handles missing nested fields by setting safe default values.
+    """
     rows = []
     skipped = 0
     for key in keys:
@@ -58,9 +69,11 @@ def _load_raw_rows(keys: list[str]) -> tuple[list[Row], int]:
             skipped += 1
             continue
         try:
+            # Parse JSON and being able to access to nested structure
             data = json.loads(raw)
             location = data.get("metadata", {}).get("location", {}).get("name", "")
             periods = data.get("data", {}).get("properties", {}).get("periods", [])
+            # Extract metereological metrics for each period
             for period in periods:
                 dewpoint = period.get("dewpoint", {})
                 dewpoint_val = dewpoint.get("value") if isinstance(dewpoint, dict) else None
@@ -70,7 +83,7 @@ def _load_raw_rows(keys: list[str]) -> tuple[list[Row], int]:
 
                 humidity = period.get("relativeHumidity", {})
                 humidity_val = humidity.get("value") if isinstance(humidity, dict) else None
-
+                # Append standardized row for Spark DataFrame creation
                 rows.append(Row(
                     raw_location=location,
                     start_time=str(period.get("startTime", "")),
@@ -89,6 +102,13 @@ def _load_raw_rows(keys: list[str]) -> tuple[list[Row], int]:
 
 
 def process_weather_to_trusted(spark: SparkSession):
+    """
+    Orchestrates the ingestion, cleaning, and governance pipeline for weather data.
+    Maps raw locations to boroughs, enforces strict quality thresholds, and 
+    handles record deduplication before final ingestion into MongoDB.
+    Saves the rejected anomalies for Data Governance and duplicates in MinIO for further analysis.
+    """
+
     print(f"[WEATHER] Listing files from: {WEATHER_PREFIX}")
     keys = [k for k in list_objects(config.LANDING_BUCKET, WEATHER_PREFIX) if k.endswith(".json")]
     print(f"[WEATHER] Found {len(keys)} JSON files.")
@@ -97,7 +117,7 @@ def process_weather_to_trusted(spark: SparkSession):
     if not rows:
         print(f"[WEATHER] No records loaded ({skipped} files skipped).")
         return
-
+    # Define schema and initial transformation to standardize units
     schema = StructType([
         StructField("raw_location",      StringType(),  False),
         StructField("start_time",        StringType(),  False),
@@ -111,7 +131,7 @@ def process_weather_to_trusted(spark: SparkSession):
     ])
 
     df = spark.createDataFrame(rows, schema=schema)
-
+    # Map geographic locations to official NYC Boroughs and clean formats
     df_transformed = df.withColumn(
         "borough",
         when(col("raw_location").rlike("(?i)harlem|upper_east|upper_west|manhattan"), "MANHATTAN")
@@ -137,7 +157,8 @@ def process_weather_to_trusted(spark: SparkSession):
     ).drop("raw_location", "start_time", "temperature_raw", "wind_speed_raw",
            "dewpoint_raw", "precip_prob_raw", "humidity_raw")
     
-    # DATA GOVERNANCE CONSTRAINTS (DATA QUALITY):
+    # APPLY DATA GOVERNANCE for Data Quality Validation
+    # Enforce meteorological logic constraints to ensure only 'Trusted' data passes through
     df_validated = df_transformed.withColumn(
         "is_valid",
         # Extreme temperatures — NWS API reports in Fahrenheit; thresholds cover NYC's historical extremes
@@ -167,6 +188,7 @@ def process_weather_to_trusted(spark: SparkSession):
     # Save the lineage of the rejected records using the anaomalies suffix
     _save_skipped(df_rejected, "WEATHER_GOVERNANCE_REJECTS", f"{config.TRUSTED_WEATHER_SKIPPED_PREFIX}anomalies_")
 
+    # Drop and save the rejected deduplicates into MinIO 
     df_deduped = df_clean.dropDuplicates(["station_name", "crash_date", "is_daytime"])
     df_dupes = df_clean.exceptAll(df_deduped)
     _save_skipped(df_dupes, "WEATHER", config.TRUSTED_WEATHER_SKIPPED_PREFIX)
@@ -174,6 +196,7 @@ def process_weather_to_trusted(spark: SparkSession):
     records = [row.asDict() for row in df_deduped.collect()]
     print(f"[WEATHER] Processed {len(records)} records ({skipped} files skipped).")
 
+    # Insert into MongoDB
     client = get_mongo_client()
     collection = client[config.MONGO_DB][config.TRUSTED_WEATHER_COLLECTION]
     ops = [

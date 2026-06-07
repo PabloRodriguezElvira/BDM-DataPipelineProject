@@ -19,6 +19,8 @@ Camera Metadata files (JSON):
   - Structural rules: Cast detection averages to Float and standardize
     date formats for cross-dataset joining.
 
+Also it checks for data quality DATA GOVERNANCE data quality constraints, storaging the raws that do not
+fulfill rules in MiniO.
 Accepted records are written to the MongoDB 'camera_aggregates' collection.
 """
 
@@ -38,6 +40,10 @@ from src.common.mongo_client import get_mongo_client
 
 
 def _save_skipped(df_dupes, label: str, prefix: str) -> None:
+    """
+    Saves rows that failed quality checks or were duplicates into a csv file in MinIO.
+    This helps us keep track of 'bad data' for future analysis or debugging.
+    """
     pandas_df = df_dupes.toPandas()
     if pandas_df.empty:
         return
@@ -53,7 +59,11 @@ EXPECTED_OBJECTS = ["MotorBike", "Pedestrian", "Bike", "LMV", "Auto", "LCV", "e-
 
 
 def _load_raw_rows(keys: list[str]) -> tuple[list[Row], int]:
-    """Read JSON files from MinIO and return one Row per camera window."""
+    """
+    Parses raw camera metadata JSON files from MinIO. It extracts average 
+    vehicle detection counts per frame and flattens them into a row format.
+    Handles missing detection classes by defaulting to 0.0.
+    """
     rows = []
     skipped = 0
     for key in keys:
@@ -62,8 +72,11 @@ def _load_raw_rows(keys: list[str]) -> tuple[list[Row], int]:
             skipped += 1
             continue
         try:
+            # Parse raw JSON content from MinIO object
             data = json.loads(raw)
             avg = data.get("avg_per_frame", {})
+            # Extract and sanitize vehicle detection metrics
+            # Using defaults (0.0) ensures consistency across missing classes
             rows.append(Row(
                 camera_id=str(data.get("camera_id", "")),
                 crash_date=str(data.get("date", "")),
@@ -77,12 +90,14 @@ def _load_raw_rows(keys: list[str]) -> tuple[list[Row], int]:
                 eRickshaw=float(avg.get("e-Rickshaw", 0.0)),
             ))
         except Exception as exc:
+            # Log parsing errors to ensure traceability of failed files
             print(f"[WARN] Skipping {key}: {exc}")
             skipped += 1
     return rows, skipped
 
 
 def process_cameras_to_trusted(spark: SparkSession):
+    # Scan and read raw JSON files list from Landing Zone in MinIO
     print(f"[CAMERAS] Scanning MinIO path: {CAMERAS_PREFIX}")
     keys = [k for k in list_objects(config.LANDING_BUCKET, CAMERAS_PREFIX) if k.endswith(".json")]
     print(f"[CAMERAS] Found {len(keys)} JSON files.")
@@ -91,7 +106,7 @@ def process_cameras_to_trusted(spark: SparkSession):
     if not rows:
         print(f"[CAMERAS] No records loaded ({skipped} files skipped).")
         return
-
+    # Define exact schema for the Spark DataFrame structure
     schema = StructType([
         StructField("camera_id",               StringType(),  False),
         StructField("crash_date",              StringType(),  True),
@@ -106,7 +121,7 @@ def process_cameras_to_trusted(spark: SparkSession):
     ])
 
     df = spark.createDataFrame(rows, schema=schema)
-
+    # Standardize metadata: Map prefixes to official NYC Boroughs and align column names
     df_transformed = df.withColumn(
         "borough",
         when(col("camera_id").rlike("^Nd"), "MANHATTAN")
@@ -148,11 +163,13 @@ def process_cameras_to_trusted(spark: SparkSession):
     df_deduped = df_clean.dropDuplicates(["camera_id", "crash_date"])
     df_dupes = df_clean.exceptAll(df_deduped)
     
+    # DATA GOVERNANCE: Save anomalous records to MinIO 
     _save_skipped(df_dupes, "CAMERAS", config.TRUSTED_CAMERA_SKIPPED_PREFIX)
-
+    # Convert final deduplicated data into standard dict array for MongoDB loading
     records = [row.asDict() for row in df_deduped.collect()]
     print(f"[CAMERAS] Processed {len(records)} records ({skipped} files skipped).")
 
+    # Insert raws into MongoDB
     client = get_mongo_client()
     collection = client[config.MONGO_DB][config.TRUSTED_CAMERA_COLLECTION]
     ops = [

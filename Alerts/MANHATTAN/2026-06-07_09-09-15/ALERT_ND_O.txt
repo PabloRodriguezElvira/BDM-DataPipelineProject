@@ -1,0 +1,10 @@
+---------------------------------------------------
+[CRITICAL TRAFFIC CONGESTION ALERT]
+---------------------------------------------------
+Timestamp : 2026-06-07 09:09:15
+Borough   : MANHATTAN
+Street    : Times Square Blvd
+Camera ID : ND_O
+Details   : Heavy traffic detected. A total of 20 vehicles 
+            were counted in the recent 15-second window.
+---------------------------------------------------

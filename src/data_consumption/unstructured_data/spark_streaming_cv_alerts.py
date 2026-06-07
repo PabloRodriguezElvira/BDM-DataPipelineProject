@@ -247,14 +247,13 @@ def run_streaming_alerts():
     print("Alert system activated. Displaying grouped traffic alerts (>=20 vehicles) in New York. \n" \
     "Press Ctrl + C to stop")
 
-    # ONE SINGLE UNIFIED QUERY USING FOREACHBATCH
     # trigger(availableNow=True) processes all messages currently in the topic and stops automatically,
     # making this script suitable for batch execution inside an Airflow task.
+    # No checkpoint needed: the topic is cleaned before each DAG run, so offsets always start fresh.
     query = df_alerts.writeStream \
         .foreachBatch(process_and_save_alerts) \
         .outputMode("update") \
         .trigger(availableNow=True) \
-        .option("checkpointLocation", "/app/spark_checkpoints/cv_alerts") \
         .start()
 
     query.awaitTermination()

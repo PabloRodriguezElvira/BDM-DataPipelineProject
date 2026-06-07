@@ -3,6 +3,7 @@ from datetime import timedelta
 from airflow import DAG
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
 
 import src.common.global_variables as config
 
@@ -34,6 +35,30 @@ with DAG(
         ),
     },
 ) as dag:
+    def _reset_topic():
+        from kafka.admin import KafkaAdminClient, NewTopic
+        from kafka.errors import UnknownTopicOrPartitionError
+
+        admin = KafkaAdminClient(bootstrap_servers=config.KAFKA_SERVER)
+        try:
+            admin.delete_topics([config.UNSTRUCTURED_IMAGE_TOPIC_NAME])
+        except UnknownTopicOrPartitionError:
+            pass
+        import time; time.sleep(2)
+        admin.create_topics([
+            NewTopic(
+                name=config.UNSTRUCTURED_IMAGE_TOPIC_NAME,
+                num_partitions=1,
+                replication_factor=1,
+            )
+        ])
+        admin.close()
+
+    reset_topic = PythonOperator(
+        task_id="reset_topic",
+        python_callable=_reset_topic,
+    )
+
     run_image_stream = BashOperator(
         task_id="run_image_stream",
         bash_command=(
@@ -69,4 +94,4 @@ with DAG(
         ),
     )
 
-    run_image_stream >> run_cv_alerts
+    reset_topic >> run_image_stream >> run_cv_alerts

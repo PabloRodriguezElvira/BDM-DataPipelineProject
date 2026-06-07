@@ -89,9 +89,16 @@ with DAG(
     run_cv_alerts = BashOperator(
         task_id="run_cv_alerts",
         bash_command=(
-            f"cd {config.PROJECT_ROOT} && "
-            f"{config.PYTHON_BIN} -m src.data_consumption.unstructured_data.spark_streaming_cv_alerts"
+            f"""
+            cd {config.PROJECT_ROOT}
+            timeout {{{{ params.streaming_timeout_seconds }}}} {config.PYTHON_BIN} -m src.data_consumption.unstructured_data.spark_streaming_cv_alerts
+            exit_code=$?
+
+            if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 124 ]; then
+              exit "$exit_code"
+            fi
+            """
         ),
     )
 
-    reset_topic >> run_image_stream >> run_cv_alerts
+    reset_topic >> [run_image_stream, run_cv_alerts]

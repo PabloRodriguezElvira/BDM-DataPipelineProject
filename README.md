@@ -122,6 +122,8 @@ Main services:
 - ClickHouse HTTP: `http://localhost:8123`
   Username: `default` / Password: `clickhouse`
 - ClickHouse native: `localhost:9001`
+- Traffic Collisions Dashboard: `http://localhost:8501`
+- Risk Prediction Dashboard: `http://localhost:8502`
 
 To run any project module inside the `app` container:
 
@@ -186,11 +188,11 @@ python -m src.data_management.exploitation_zone.semistructured_exploitation_zone
 python -m src.data_management.exploitation_zone.unstructured_exploitation_zone
 ```
 
-**Data Consumption (run locally, ClickHouse at `localhost:8123`):**
+**Data Consumption (to run locally install the requirements in requirements.txt file):**
 
 ```bash
-streamlit run src/data_consumption/structured_data/dashboard.py
-streamlit run src/data_consumption/structured_data/risk_prediction.py
+streamlit run src/data_consumption/structured_data/traffic_collisions_dashboard.py
+streamlit run src/data_consumption/structured_data/risk_prediction_dashboard.py
 ```
 
 ## ClickHouse

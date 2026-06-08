@@ -256,7 +256,7 @@ services:
       - .:/app
     depends_on:
       - clickhouse
-    command: streamlit run src/data_consumption/structured_data/dashboard.py --server.port 8501 --server.address 0.0.0.0
+    command: streamlit run src/data_consumption/structured_data/trafic_collisions_dashboard.py --server.port 8501 --server.address 0.0.0.0
     ports:
       - "8501:8501"
 
@@ -271,7 +271,7 @@ services:
       - .:/app
     depends_on:
       - clickhouse
-    command: streamlit run src/data_consumption/structured_data/risk_prediction.py --server.port 8502 --server.address 0.0.0.0
+    command: streamlit run src/data_consumption/structured_data/risk_prediction_dashboard.py --server.port 8502 --server.address 0.0.0.0
     ports:
       - "8502:8502"
 

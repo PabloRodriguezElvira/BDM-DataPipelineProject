@@ -36,4 +36,6 @@ USER jovyan
 
 # 3. Instalamos tus librerías de Python (donde está tu nuevo pyspark==3.5.1)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-ml.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements-ml.txt

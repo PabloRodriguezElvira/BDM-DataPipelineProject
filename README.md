@@ -188,11 +188,12 @@ python -m src.data_management.exploitation_zone.semistructured_exploitation_zone
 python -m src.data_management.exploitation_zone.unstructured_exploitation_zone
 ```
 
-**Data Consumption (to run locally install the requirements in requirements.txt file):**
+**Data Consumption (to run locally install the requirements in requirements.txt and requirements-ml.txt files):**
 
 ```bash
 streamlit run src/data_consumption/structured_data/traffic_collisions_dashboard.py
 streamlit run src/data_consumption/structured_data/risk_prediction_dashboard.py
+docker compose exec app python -m src.data_consumption.unstructured_data.nlp_similarity_search
 ```
 
 ## ClickHouse

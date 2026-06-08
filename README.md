@@ -29,6 +29,76 @@ The platform includes:
 - Unstructured text: text-based news data
 - Unstructured images: Kafka streaming flow
 
+## Project Structure
+
+```
+BDM-DataPipelineProject/
+├── Alerts/
+│   ├── BROOKLYN/
+│   ├── MANHATTAN/
+│   ├── QUEENS/
+│   └── STATEN ISLAND/
+├── dags/
+│   ├── landing_zone_dag.py
+│   ├── trusted_zone_dag.py
+│   ├── exploitation_zone_dag.py
+│   └── streaming_dag.py
+├── downloaded_data/
+│   ├── structured/
+│   ├── semi_structured/
+│   └── unstructured/
+├── models/
+│   ├── MobileNetSSD_deploy.caffemodel
+│   └── MobileNetSSD_deploy.prototxt
+├── src/
+│   ├── common/
+│   │   ├── global_variables.py
+│   │   ├── minio_client.py
+│   │   ├── minio_manager.py
+│   │   ├── clickhouse_client.py
+│   │   ├── mongo_client.py
+│   │   ├── kafka_client.py
+│   │   ├── milvus_client.py
+│   │   ├── load_env.py
+│   │   └── progress_bar.py
+│   ├── data_management/
+│   │   ├── data_ingestion/
+│   │   │   ├── structured_data.py
+│   │   │   ├── semi_structured_data.py
+│   │   │   ├── unstructured_data_audio.py
+│   │   │   ├── unstructured_data_text.py
+│   │   │   ├── unstructured_data_image_producer.py
+│   │   │   └── unstructured_data_image_consumer.py
+│   │   ├── landing_zone/
+│   │   │   ├── upload_to_temporal.py
+│   │   │   ├── landing_zone.py
+│   │   │   ├── structured_csv_to_arrow.py
+│   │   │   └── process_metadata_to_delta.py
+│   │   ├── trusted_zone/
+│   │   │   ├── structured_trusted_zone.py
+│   │   │   ├── unstructured_trusted_zone.py
+│   │   │   ├── semistructured_weather_trusted_zone.py
+│   │   │   └── semistructured_aggregated_trusted_zone.py
+│   │   └── exploitation_zone/
+│   │       ├── structured_exploitation_zone.py
+│   │       ├── semistructured_exploitation_zone.py
+│   │       └── unstructured_exploitation_zone.py
+│   └── data_consumption/
+│       ├── structured_data/
+│       │   ├── trafic_collisions_dashboard.py
+│       │   └── risk_prediction_dashboard.py
+│       └── unstructured_data/
+│           ├── nlp_similarity_search.py
+│           └── spark_streaming_cv_alerts.py
+├── data_MinIO/
+├── compose.yaml
+├── Dockerfile
+├── Dockerfile.airflow
+├── requirements.txt
+├── requirements-airflow.txt
+└── requirements-ml.txt
+```
+
 ## Run Docker Environment
 
 Start the Docker environment with:
@@ -146,7 +216,7 @@ SELECT * FROM exploitation_zone.collisions_weather LIMIT 100
 TRUNCATE TABLE exploitation_zone.collisions_weather
 ```
 
-### Data Governance — Embedded Metadata
+### Data Governance - Embedded Metadata
 
 The exploitation zone table carries persistent documentation embedded in the ClickHouse catalogue.
 
@@ -165,26 +235,6 @@ SELECT name, type, comment
 FROM system.columns
 WHERE database = 'exploitation_zone' AND table = 'collisions_weather';
 ```
-
-### Data Governance — Quality Rules (Trusted Zone)
-
-Data quality validation happens in the Trusted Zone before data reaches the Exploitation Zone. Rejected rows are saved as timestamped CSVs in MinIO under the corresponding `skipped/` prefix.
-
-**Structured (NYC Collisions)** — `trusted-zone/structured/skipped/`:
-- Duplicate `collision_id` → only one copy kept
-- Null, empty, or unparseable `crash_date` → rejected
-
-**Semi-structured Weather** — `trusted-zone/semi_structured/weather/skipped/`:
-- Temperature outside `[-22, 110] °F` (NWS API reports in Fahrenheit; covers NYC historical extremes)
-- Humidity or precipitation probability outside `[0, 100] %`
-- Negative wind speed
-- Dew point exceeding air temperature (meteorological impossibility)
-- Duplicate records per `(station_name, crash_date, is_daytime)`
-
-**Semi-structured Camera Aggregates** — `trusted-zone/semi_structured/cameras/skipped/`:
-- Any negative vehicle detection count
-- Average LMV detections per frame exceeding 100 (physically impossible, flags sensor error)
-- Duplicate records per `(camera_id, crash_date)`
 
 ## Notes
 
